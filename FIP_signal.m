@@ -1003,7 +1003,15 @@ classdef FIP_signal <handle
             uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
                 'Label','peri-event plot',...
                 'Tag','times_stamps',...
-                'Callback',@this_FIP_signal.context_menu) 
+                'Callback',@this_FIP_signal.context_menu)
+            temp_menu=uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
+                'Label','use for time allignment');
+            uimenu('Parent',temp_menu,'Label','this stamp is 5sec',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu('Parent',temp_menu,'Label','this stamp is 15sec',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu('Parent',temp_menu,'Label','this stamp is Xsec',...
+                'Callback',@this_FIP_signal.context_menu)
         end
         
         function context_menu(this_FIP_signal, scr, ev)
@@ -1193,9 +1201,6 @@ classdef FIP_signal <handle
                         nr=str2num(tag(6:end));
                         m_data=this_FIP_signal.data{nr};
                     end
-                    
-                    
-                   
                     window=15; %Will work on changing this later
                     this_FIP_signal.peri_event_plot(m_data,stamps,window);
                 case 'first peak is 5sec'
@@ -1220,6 +1225,20 @@ classdef FIP_signal <handle
                     if isfield(this_FIP_signal.handles,'time_stamp_plots')
                         warning('There all allready timestamps, those will NOT be offset.')
                     end
+                case 'this stamp is 15sec'
+                    % Allign time based on clicked timestamp
+                    stamps=this_FIP_signal.r_mouse_scr.XData;
+                    x_loc=this_FIP_signal.mouse_start(1);
+                    [~, index]=min(abs(stamps-x_loc));
+                    time=stamps(index);
+                    time_offset=time-15;
+                    disp(['Time offset is ' num2str(time_offset) ' sec.'])
+                    this_FIP_signal.settings.time_offset=time_offset;
+                    this_FIP_signal.update_plots;
+                    % Check if there are allready timestamps stored
+                    if isfield(this_FIP_signal.handles,'time_stamp_plots')
+                        warning('There all allready timestamps, those will NOT be offset.')
+                    end  
                 otherwise
                     warning('Menu option not yet available.')
             end
@@ -1277,6 +1296,8 @@ classdef FIP_signal <handle
             elseif ev.Button==3
                 % Store the source of the R click for the context menu
                 this_FIP_signal.r_mouse_scr=scr;
+                punter=get(scr.Parent,'CurrentPoint');
+                this_FIP_signal.mouse_start=punter(1,1:2);
             end
         end
         
