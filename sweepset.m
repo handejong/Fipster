@@ -160,8 +160,10 @@ classdef sweepset < handle
             % Current or voltage clamp
             if strcmp(this_sweepset.file_header.recChUnits{1},'pA')
                 this_sweepset.clamp_type='Current (pA)';
-            else
+            elseif strcmp(this_sweepset.file_header.recChUnits{1},'mV')
                 this_sweepset.clamp_type='Voltage (mV)';
+            else
+                this_sweepset.clamp_type='Other';
             end
             
             % Setting other variables
@@ -178,6 +180,7 @@ classdef sweepset < handle
             this_sweepset.settings.average_smooth=0;
             this_sweepset.settings.smoothed=false;
             this_sweepset.settings.smooth_factor=0;
+            this_sweepset.settings.Z_scores=false;
             this_sweepset.settings.noise_removal.spikes=false;
             this_sweepset.settings.mouse_release=false;
             this_sweepset.settings.dragdrop=''; % What is currently being draged
@@ -199,13 +202,15 @@ classdef sweepset < handle
             difference=0.1*(roof-floor);
             %disp_right=round(length(this_sweepset.data(:,1,1))/this_sweepset.sampling_frequency);
             axis([this_sweepset.X_data(1) this_sweepset.X_data(end) floor-difference roof+difference])
-            haxes=findobj(this_sweepset.handles.figure,'type','axes'); %axes handle
+            haxes=findobj(this_sweepset.handles.figure,'type','axes'); %axes handle (used to put context menu)
+            this_sweepset.handles.axes=haxes;
             
             % This is the context menu (drop down) for the sweeps
             this_sweepset.handles.drop_down.sweep_menu=uicontextmenu;
             this_sweepset.handles.drop_down.m1=uimenu(this_sweepset.handles.drop_down.sweep_menu,'Label','include sweep','Callback',@this_sweepset.sweep_context);
             this_sweepset.handles.drop_down.m2=uimenu(this_sweepset.handles.drop_down.sweep_menu,'Label','reject sweep','Callback',@this_sweepset.sweep_context);
             this_sweepset.handles.drop_down.m3=uimenu(this_sweepset.handles.drop_down.sweep_menu,'Label','smooth 1ms','Callback',@this_sweepset.sweep_context);
+            this_sweepset.handles.drop_down.m4=uimenu(this_sweepset.handles.drop_down.sweep_menu,'Label','Z-scores','Callback',@this_sweepset.sweep_context);
             
             % This is the context menu (drop down) for the average trace
             this_sweepset.handles.average_drop_down.menu=uicontextmenu;
@@ -313,6 +318,8 @@ classdef sweepset < handle
         end        
               
         function average_trace=get.average_trace(this_sweepset)
+            % Getter function for the average trace
+            
             average_trace=mean(squeeze(this_sweepset.data(:,1,this_sweepset.sweep_selection)),2);
             
             if this_sweepset.settings.average_smooth>0
@@ -322,7 +329,8 @@ classdef sweepset < handle
         end      
         
         function smooth_average(this_sweepset, smooth_factor)
-             this_sweepset.settings.average_smooth=round(smooth_factor); %will be automatically updated because of the listener to settings
+            %will be automatically updated because of the listener to settings
+            this_sweepset.settings.average_smooth=round(smooth_factor); 
         end
         
         function smooth_trace(this_sweepset, input)
@@ -367,7 +375,7 @@ classdef sweepset < handle
             % the perfusion pump (in my case), but it can later be adapted
             % to remove artifacts in general.
             
-            % This function if not currently working.
+            % This function is not currently working.
             
             for i=1:this_sweepset.number_of_sweeps
                 active_trace=this_sweepset.data(:,1,i);
@@ -431,7 +439,13 @@ classdef sweepset < handle
             hold on
             plot(XData,mean(results));
             xlabel('Time (ms)')
-            ylabel('Y_values')
+            
+            % Y Label
+            if this_sweepset.settings.Z_scores
+                ylabel('Z-score')
+            else
+                ylabel(this_sweepset.clamp_type)
+            end
   
         end
         
@@ -479,8 +493,7 @@ classdef sweepset < handle
             if this_sweepset.settings.noise_removal.spikes
                 % remove spikes   
             end
-                
-            
+                 
             % now checking if the traces are suposed to be smooth
             input=this_sweepset.settings.smooth_factor;
             if this_sweepset.settings.smoothed==true
@@ -488,6 +501,15 @@ classdef sweepset < handle
                     base_data(:,1,i)=smooth(base_data(:,1,i),this_sweepset.sampling_frequency*input);
                     end
             end
+            
+            % Are we doing Z-scores?
+            if this_sweepset.settings.Z_scores
+                m_mean=mean2(base_data(:,1,:));
+                m_std=std2(base_data(:,1,:));
+                base_data=base_data-m_mean;
+                base_data=base_data./m_std;   
+            end
+                
             
             % here we should add any other manipulations that can be
             % performed on the base data
@@ -549,7 +571,7 @@ classdef sweepset < handle
         end
         
         function plot_update(this_sweepset, ev, ~)
-            % Will listen to changed variabled and update other accordingly
+            % Will listen to changed variable and update others accordingly
             
             switch ev.Name
                 case 'sweep_selection'
@@ -576,6 +598,14 @@ classdef sweepset < handle
                     
                     notify(this_sweepset,'state_change')
             end
+            
+            % Stuff that this function should always do (should be
+            % computationally light or object will slow down).
+            if this_sweepset.settings.Z_scores
+                this_sweepset.handles.axes.YLabel.String='Z-score';
+            else
+                this_sweepset.handles.axes.YLabel.String=this_sweepset.clamp_type;
+            end   
         end
         
         function click_on_sweep(this_sweepset, clicked_sweep, click_info)
@@ -731,6 +761,9 @@ classdef sweepset < handle
                     this_sweepset.show_baseline;
                 case 'heatmap'
                     this_sweepset.heat_plot;
+                case 'Z-scores'
+                    % Toggle Z-scores or data
+                    this_sweepset.settings.Z_scores=~this_sweepset.settings.Z_scores;
             end  
         end 
         

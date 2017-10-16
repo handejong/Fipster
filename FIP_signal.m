@@ -328,11 +328,10 @@ classdef FIP_signal <handle
                 end
             end
             
-            
             % Text to indicate which fiber or data the user is looking at
             this_FIP_signal.handles.text_1=uicontrol(gcf,...
                 'Units','normalized',...
-                'Position',[0.88 0.9 0.05 0.05],...
+                'Position',[0.83 0.9 0.1 0.05],...
                 'String',this_FIP_signal.info.names{1},...
                 'Style','text',...
                 'FontSize',20,...
@@ -476,7 +475,7 @@ classdef FIP_signal <handle
             this_FIP_signal.update_plots;
         end
         
-        function peri_event_plot(this_FIP_signal, input, stamps, window)
+        function PE_plot = peri_event_plot(this_FIP_signal, input, stamps, window)
             % Makes a peri-event plot (sweepset) from input signal and
             % stamps (events). Inputs should include a timeline in the 2th
             % column. Time should be in s in stamps,input and
@@ -526,8 +525,7 @@ classdef FIP_signal <handle
                 [~, index]=min(abs(stamps(i)-input(:,2)));
                 results(i+1,:)=input(index-window:index+window,1);
             end
-            test=sweepset('other data',results);
-            assignin('base','hoihoi',test)
+            PE_plot=sweepset('other data',results);
         end
         
         function sig_CD=get.sig_CD(this_FIP_signal)
@@ -1173,7 +1171,7 @@ classdef FIP_signal <handle
                 case 'peri-event plot'
                     % Make peri-event data based on scr
                     tag=this_FIP_signal.r_mouse_scr.Tag;
-                    if strcmp(tag(1:4),'stam')
+                    if strcmp(tag(1:4),'stam') %User clicked on stamps
                         nr=str2num(tag(8:end));
                         stamps=this_FIP_signal.timestamps{nr};
                         qstring=['Usign the signal from '...
@@ -1185,24 +1183,36 @@ classdef FIP_signal <handle
                             'normalized signal',...
                             'normalized signal');
 
-                        switch input
+                        switch input % Figure out with data to use
                             case 'Calcium Dependend'
                                 m_data=this_FIP_signal.sig_CD{this_FIP_signal.c_signal};
+                                s_units=this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,1};
                             case '405nm signal'
                                 m_data=this_FIP_signal.sig_405{this_FIP_signal.c_signal};
+                                s_units=this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,1};
                             case 'normalized signal'
                                 m_data=this_FIP_signal.data{this_FIP_signal.c_signal};
+                                s_units=this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,2};
                         end
-                    elseif strcmp(tag(1:4),'data') %clicked on data
+                    elseif strcmp(tag(1:4),'data') % User clicked on data
+                        %(figure out witch stamps to use)
                         input=listdlg('PromptString','Select time stamps:',...
                             'SelectionMode','single',...
                             'ListString',this_FIP_signal.timestamps_names);
                         stamps=this_FIP_signal.timestamps{input};
                         nr=str2num(tag(6:end));
                         m_data=this_FIP_signal.data{nr};
-                    end
-                    window=15; %Will work on changing this later
-                    this_FIP_signal.peri_event_plot(m_data,stamps,window);
+                        s_units=this_FIP_signal.settings.signal_units{nr,2};
+                    end 
+                    % Plot using this data
+                    m_window=15; %Will work on changing this later
+                    test=this_FIP_signal.peri_event_plot(m_data,stamps,m_window);
+                    %Set proper y axis
+                    test.clamp_type=s_units; %see above)
+                    % Store peri event plot in base workspace so user has access to
+                    % all settings
+                    assignin('base','peri_event',test)
+                    disp('Peri_event plot handle stored in base workspace.') 
                 case 'first peak is 5sec'
                     % Find time of first peak
                     stamps=this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr);
