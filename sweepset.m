@@ -186,7 +186,7 @@ classdef sweepset < handle
             this_sweepset.settings.dragdrop=''; % What is currently being draged
             
             % Make a figure
-            this_sweepset.handles.figure=figure('position',[-1840,-137,700,500]);
+            this_sweepset.handles.figure=figure('position',[0,0,700,500]);
             set(this_sweepset.handles.figure,'name',char(this_sweepset.filename),'numbertitle','off');
             hold on
             
@@ -432,6 +432,7 @@ classdef sweepset < handle
             subplot(2,1,1)
             results=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
             imagesc(results(:,:));
+            axis off
             subplot(2,1,2)
             XData=this_sweepset.X_data;
             sem_results=std(results)./sqrt(this_sweepset.number_of_sweeps);
@@ -447,6 +448,18 @@ classdef sweepset < handle
                 ylabel(this_sweepset.clamp_type)
             end
   
+        end
+        
+        function refocus(this_sweepset)
+            % Just to bring all data back into visible window
+            floor=min(min(this_sweepset.data))-0.1*max(max(this_sweepset.data));
+            roof=max(max(this_sweepset.data))+0.1*max(max(this_sweepset.data));
+            difference=0.1*(roof-floor);
+            disp_right=this_sweepset.X_data(end);
+            disp_left=this_sweepset.X_data(1);
+            
+            this_sweepset.handles.axes.XLim=[disp_left disp_right];
+            this_sweepset.handles.axes.YLim=[floor-difference roof+difference];
         end
         
         function baseline=get.baseline(this_sweepset)
@@ -504,8 +517,10 @@ classdef sweepset < handle
             
             % Are we doing Z-scores?
             if this_sweepset.settings.Z_scores
-                m_mean=mean2(base_data(:,1,:));
-                m_std=std2(base_data(:,1,:));
+                % Note that only including selected sweeps for Z-score
+                selection=this_sweepset.sweep_selection;
+                m_mean=mean2(base_data(:,1,selection));
+                m_std=std2(base_data(:,1,selection));
                 base_data=base_data-m_mean;
                 base_data=base_data./m_std;   
             end
@@ -575,11 +590,14 @@ classdef sweepset < handle
             
             switch ev.Name
                 case 'sweep_selection'
+                    this_sweepset.data=this_sweepset.base_data;
                     notify(this_sweepset,'selection_change')
                     notify(this_sweepset,'state_change')
                     % update all plots that are dependend on this variable
                     set(this_sweepset.handles.average_trace,'YData',this_sweepset.average_trace);
+                    set(this_sweepset.handles.current_sweep,'YData',this_sweepset.data(:,1,this_sweepset.current_sweep));
                     for i=1:length(this_sweepset.sweep_selection)
+                        set(this_sweepset.handles.all_sweeps(i),'YData',squeeze(this_sweepset.data(:,1,i)));
                         if this_sweepset.sweep_selection(i)
                             this_sweepset.handles.all_sweeps(i).Color=[0 0 1];
                         else
@@ -698,12 +716,7 @@ classdef sweepset < handle
                 case 'moving average 1s'
                     this_sweepset.settings.baseline_info.method='moving_average_1s';
                 case 'refocus'
-                    floor=min(min(this_sweepset.data))-0.1*max(max(this_sweepset.data));
-                    roof=max(max(this_sweepset.data))+0.1*max(max(this_sweepset.data));
-                    difference=0.1*(roof-floor);
-                    disp_right=this_sweepset.X_data(end);
-                    disp_left=this_sweepset.X_data(1);
-                    axis([disp_left disp_right floor-difference roof+difference])
+                    this_sweepset.refocus();
                 case 'combine sweepsets'
                     combiner_1=trace_combiner;
                     assignin('base','combiner_1',combiner_1);
@@ -764,6 +777,7 @@ classdef sweepset < handle
                 case 'Z-scores'
                     % Toggle Z-scores or data
                     this_sweepset.settings.Z_scores=~this_sweepset.settings.Z_scores;
+                    this_sweepset.refocus();
             end  
         end 
         
