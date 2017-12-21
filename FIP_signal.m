@@ -12,26 +12,6 @@ classdef FIP_signal <handle
     %       - 'Filename',filename       filename should refer to a .mat
     %                                   file which will be imported.
     %       - 'User input'              Will open a file browser window.
-    %       - 'Signal',sig              Sig should be and ix1 array were
-    %                                   i represents the # of datapoints.
-    %                                   Multiple signals can be imported in
-    %                                   this way.                               
-    %       - 'Refference',ref          Ref should be formated as signal.
-    %                                   Note that refference traces (405nm 
-    %                                   signal) should be presented
-    %                                   in the same order as signal traces.
-    %       - 'Time',time_info          Time info can be either a complete
-    %                                   timeline formatted ix1, one value,
-    %                                   which will be asumed to be the
-    %                                   sampling frequency or 2 values wich
-    %                                   will be presumed to be the start
-    %                                   (first timepoint) and end (last
-    %                                   timepoint) of the associated
-    %                                   signal. The user can either present
-    %                                   one time signal which will be
-    %                                   applied to all signals or one time
-    %                                   argument for each signal, but no
-    %                                   other number of time arguments.
     %       - 'Signal set',signal       Signal is an i,2,n matrix were i is
     %                                   datapoints and n is the number of
     %                                   fibers. :,1,: should contain signal
@@ -45,19 +25,15 @@ classdef FIP_signal <handle
     %                                   figure. This is efficient for other
     %                                   programs (e.g. Fipster).
     %
-    %   Note: 'Filename','User_input' and 'Signal_set' are not compattible
-    %   with 'Signal, 'Refference' and 'Time'.
-    %
-    %
     %   METHODS
-    %       - 'go_to_time'              Will scroll to the nearest available
-    %                                   timepoints or interpolate when this 
-    %                                   is turned on.
-    %
+    %       - import_timestamps         Will import timestamps. Arugments
+    %                                   should be the stamps (array) and
+    %                                   the name of the stamps (char).
     %
     % FIP_signal is part of FIPster. FIPster is made by Johannes de Jong,
     % j.w.jong@berkeley.edu
-     
+
+    
     properties
         info                    % Info about the current data and raw data
         raw_data                % Contains data as imported on contruction
@@ -154,9 +130,11 @@ classdef FIP_signal <handle
                 '(FIP_signal is case sensitive.)'])
             end
                     
-            % Present figure
+            % Present figure unless supressed by user
             if present_figure
                 this_FIP_signal.present_figure();
+            else
+                this_FIP_signal.figure_open=false;
             end    
         end
         
@@ -317,7 +295,7 @@ classdef FIP_signal <handle
                     this_FIP_signal.handles.logAI_plots{i}='deleted logAI plot, see raw data';
                 end
             end
-            ylabel('(mV)')
+            ylabel('(V)')
             
             % Plotting any timestamp data (if available)
             if isfield(this_FIP_signal.handles,'time_stamp_plots')
@@ -424,11 +402,11 @@ classdef FIP_signal <handle
             if abs(mean_signal-min_signal)>abs(mean_signal-max_signal)
                 threshold=mean_signal-threshold;
                 stamp_logic=scr.YData<threshold;
-                disp(['Pulse is defined as signal <' num2str(threshold) ' mV.']);
+                disp(['Pulse is defined as signal <' num2str(threshold) ' V.']);
             else
                 threshold=mean_signal+threshold;
                 stamp_logic=scr.YData>threshold;
-                disp(['Pulse is defined as signal >' num2str(threshold) ' mV.']);
+                disp(['Pulse is defined as signal >' num2str(threshold) ' V.']);
             end
 
             % Get info from user about conversion and calculate from that
@@ -459,15 +437,32 @@ classdef FIP_signal <handle
             % Find out how many timestamps arrays there allready are
             nr=length(this_FIP_signal.timestamps)+1;
             
+            % Sometimes users import array's with a lot of zeros, but these
+            % zeros are probably not time stamps.
+            if sum(stamps==0)>0
+                dlg_ans=questdlg(...
+                    ['There are ' num2str(sum(stamps==0)) ' zeros in this array, import those as well?'],...
+                    'Time stamps at zero.','yes','no','no');
+                if strcmp(dlg_ans,'yes')
+                    disp('Importing timestamps including those at time point 0.');
+                else
+                    disp('Excluding time stamps at time point 0.');
+                    stamps=stamps(stamps~=0);
+                end
+            end
+            
             % Store timestamps and plot them
             this_FIP_signal.timestamps{nr}=stamps;
             this_FIP_signal.timestamps_names{nr}=name;
-            subplot(this_FIP_signal.handles.logAI_plot)
-            this_FIP_signal.handles.time_stamp_plots{nr}=...
-                plot(stamps,ones(length(stamps),1)*nr,'x',...
-                'UIContextMenu',this_FIP_signal.handles.drop_down.time_stamps,...
-                'Tag',['stamps_' num2str(nr)],...
-                'ButtonDownFcn',@this_FIP_signal.mouse_down);
+            
+            if this_FIP_signal.figure_open
+                subplot(this_FIP_signal.handles.logAI_plot)
+                this_FIP_signal.handles.time_stamp_plots{nr}=...
+                    plot(stamps,ones(length(stamps),1)*nr,'x',...
+                    'UIContextMenu',this_FIP_signal.handles.drop_down.time_stamps,...
+                    'Tag',['stamps_' num2str(nr)],...
+                    'ButtonDownFcn',@this_FIP_signal.mouse_down);
+            end
             
             % Done
             disp(['Timestamps ' name ' stored in cell ' num2str(nr) '.'])
@@ -749,7 +744,7 @@ classdef FIP_signal <handle
                     % LogAI plot
                     % The reason for this awkward system rather than just
                     % making unnecesary plots invisible is that we don't even
-                    % want the LogAI getter function to load al available raw
+                    % want the LogAI getter function to load all available raw
                     % data, because there could be huge amounth of data points
                     % there. This way LogAI only copies selected channels from
                     % Raw data. (See the getter function for clarification).
@@ -1015,13 +1010,13 @@ classdef FIP_signal <handle
         function context_menu(this_FIP_signal, scr, ev)
             % Deals with all context menus. I realize it's quite a long
             % list, but I've found it usefull to put all context menu
-            % options in one big function. They are quite organised and
+            % options in one big function. They are quite organized and
             % it's possible to use cmd-F (ctr-F) to search any context menu
             % label.
             
             % Note: when adding new context menu options. Add the option
             % itself to the correct menu in the function make_context.
-            % Reffer to this function in the callback property. It migh be
+            % Refer to this function in the callback property. It migh be
             % usefull to know that the property this_FIP_signal.r_mouse_scr
             % contains the source of the last right mouse button click.
 
@@ -1152,7 +1147,6 @@ classdef FIP_signal <handle
                         input=inputdlg('minimum stamp interval: ');
                         input=str2num(input{1});
                         stamps_old=this_FIP_signal.timestamps{nr};
-                        j=0;
                         j=1;
                         stamps(j)=stamps_old(1);
                         for i=2:length(stamps_old)
@@ -1207,8 +1201,10 @@ classdef FIP_signal <handle
                     % Plot using this data
                     m_window=15; %Will work on changing this later
                     test=this_FIP_signal.peri_event_plot(m_data,stamps,m_window);
-                    %Set proper y axis
+                    %Set proper y axis and name bar
                     test.clamp_type=s_units; %see above)
+                    test.filename=this_FIP_signal.timestamps_names{nr};
+                    test.handles.figure.Name=this_FIP_signal.timestamps_names{nr}; 
                     % Store peri event plot in base workspace so user has access to
                     % all settings
                     assignin('base','peri_event',test)
@@ -1235,6 +1231,20 @@ classdef FIP_signal <handle
                     if isfield(this_FIP_signal.handles,'time_stamp_plots')
                         warning('There all allready timestamps, those will NOT be offset.')
                     end
+                case 'this stamp is 5sec'
+                    % Allign time based on clicked timestamp
+                    stamps=this_FIP_signal.r_mouse_scr.XData;
+                    x_loc=this_FIP_signal.mouse_start(1);
+                    [~, index]=min(abs(stamps-x_loc));
+                    time=stamps(index);
+                    time_offset=time-5;
+                    disp(['Time offset is ' num2str(time_offset) ' sec.'])
+                    this_FIP_signal.settings.time_offset=time_offset;
+                    this_FIP_signal.update_plots;
+                    % Check if there are allready timestamps stored
+                    if isfield(this_FIP_signal.handles,'time_stamp_plots')
+                        warning('There all allready timestamps, those will NOT be offset.')
+                    end 
                 case 'this stamp is 15sec'
                     % Allign time based on clicked timestamp
                     stamps=this_FIP_signal.r_mouse_scr.XData;

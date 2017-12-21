@@ -330,6 +330,12 @@ classdef sweepset < handle
         
         function smooth_average(this_sweepset, smooth_factor)
             %will be automatically updated because of the listener to settings
+            if smooth_factor<1/this_sweepset.sampling_frequency
+                minimum_smooth=3/this_sweepset.sampling_frequency;
+                warning(['The mininum smooth span at this sampling rate (' num2str(this_sweepset.sampling_frequency) 'Khz) is ' num2str(minimum_smooth) 'ms.']);
+                disp('Aplying minimum smooth span');
+                smooth_factor=minimum_smooth;
+            end
             this_sweepset.settings.average_smooth=round(smooth_factor); 
         end
         
@@ -344,6 +350,12 @@ classdef sweepset < handle
                     error(['unrecognized input: ' input]);
                 end
             else
+                if input<1/this_sweepset.sampling_frequency
+                    minimum_smooth=3/this_sweepset.sampling_frequency;
+                    warning(['The mininum smooth span at this sampling rate (' num2str(this_sweepset.sampling_frequency) 'Khz) is ' num2str(minimum_smooth) 'ms.']);
+                    disp('Aplying minimum smooth span');
+                    input=minimum_smooth;
+                end
                 this_sweepset.settings.smooth_factor=input;
                 this_sweepset.settings.smoothed=true;
                 disp(['Data smoothed by ' num2str(input) 'ms']);
@@ -511,7 +523,7 @@ classdef sweepset < handle
             input=this_sweepset.settings.smooth_factor;
             if this_sweepset.settings.smoothed==true
                     for i=1:length(this_sweepset.data(1,1,:))
-                    base_data(:,1,i)=smooth(base_data(:,1,i),this_sweepset.sampling_frequency*input);
+                        base_data(:,1,i)=smooth(base_data(:,1,i),this_sweepset.sampling_frequency*input);
                     end
             end
             
