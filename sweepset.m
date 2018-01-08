@@ -181,6 +181,7 @@ classdef sweepset < handle
             this_sweepset.settings.smoothed=false;
             this_sweepset.settings.smooth_factor=0;
             this_sweepset.settings.Z_scores=false;
+            this_sweepset.settings.Z_scores_over_selection=true; % Default
             this_sweepset.settings.noise_removal.spikes=false;
             this_sweepset.settings.mouse_release=false;
             this_sweepset.settings.dragdrop=''; % What is currently being draged
@@ -237,10 +238,11 @@ classdef sweepset < handle
             this_sweepset.handles.background_drop_down.m2=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','display average','Callback',@this_sweepset.sweep_context);
             this_sweepset.handles.background_drop_down.m3=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','display all sweeps','Callback',@this_sweepset.sweep_context);
             this_sweepset.handles.background_drop_down.m4=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','display baseline','Callback',@this_sweepset.sweep_context);
-            this_sweepset.handles.background_drop_down.m5=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','refocus','Callback',@this_sweepset.sweep_context);
-            this_sweepset.handles.background_drop_down.m6=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','combine sweepsets','Callback',@this_sweepset.sweep_context);
-            this_sweepset.handles.backgorund_drop_down.m7=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','export data','Callback',@this_sweepset.sweep_context);
-            this_sweepset.handles.backgorund_drop_down.m8=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','heatmap','Callback',@this_sweepset.sweep_context);
+            this_sweepset.handles.background_drop_down.m5=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','display SEM','Callback',@this_sweepset.sweep_context);
+            this_sweepset.handles.background_drop_down.m6=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','refocus','Callback',@this_sweepset.sweep_context);
+            this_sweepset.handles.background_drop_down.m7=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','combine sweepsets','Callback',@this_sweepset.sweep_context);
+            this_sweepset.handles.backgorund_drop_down.m8=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','export data','Callback',@this_sweepset.sweep_context);
+            this_sweepset.handles.backgorund_drop_down.m9=uimenu(this_sweepset.handles.background_drop_down.menu,'Label','heatmap','Callback',@this_sweepset.sweep_context);
             
             % Plot all the sweeps
             this_sweepset.handles.all_sweeps=plot(this_sweepset.X_data,squeeze(this_sweepset.data(:,1,:)),'b','visible','on');
@@ -264,6 +266,16 @@ classdef sweepset < handle
             set(this_sweepset.handles.average_trace,'UserData','average_trace','DisplayName','average');
             set(this_sweepset.handles.average_trace,'ButtonDownFcN',@this_sweepset.click_on_sweep)
             this_sweepset.handles.average_trace.UIContextMenu = this_sweepset.handles.average_drop_down.menu;
+            
+            % Plot the standard error of the mean (light blue shading)
+            temp_data=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
+            XData=this_sweepset.X_data;
+            SEM=std(temp_data)./sqrt(this_sweepset.number_of_sweeps);
+            this_sweepset.handles.SEM=...
+                fill([XData';flipud(XData')],[mean(temp_data)'-SEM';flipud(mean(temp_data)'+SEM')],[0 0 1],...
+                'linestyle','none',...
+                'FaceAlpha',0.3,...
+                'Visible','off');
             
             % Plot vertical lines that indicate baseline start and stop
             this_sweepset.handles.baseline.start=line([this_sweepset.settings.baseline_info.start, this_sweepset.settings.baseline_info.start],[-20000 20000],'Visible','off',...
@@ -447,7 +459,7 @@ classdef sweepset < handle
             axis off
             subplot(2,1,2)
             XData=this_sweepset.X_data;
-            sem_results=std(results)./sqrt(this_sweepset.number_of_sweeps);
+            sem_results=std(results)./sqrt(sqrt(sum(this_sweepset.sweep_selection)));
             fill([XData';flipud(XData')],[mean(results)'-sem_results';flipud(mean(results)'+sem_results')],[0 0 1],'linestyle','none','FaceAlpha',0.3);
             hold on
             plot(XData,mean(results));
@@ -530,7 +542,14 @@ classdef sweepset < handle
             % Are we doing Z-scores?
             if this_sweepset.settings.Z_scores
                 % Note that only including selected sweeps for Z-score
-                selection=this_sweepset.sweep_selection;
+                if this_sweepset.settings.Z_scores_over_selection
+                    % Use only selected sweeps to calculate Z-scores
+                    selection=this_sweepset.sweep_selection;
+                else
+                    % Use all sweeps (including non-selected ones) to
+                    % calculate Z-scores.
+                    selection=true(1,this_sweepset.number_of_sweeps);
+                end
                 m_mean=mean2(base_data(:,1,selection));
                 m_std=std2(base_data(:,1,selection));
                 base_data=base_data-m_mean;
@@ -635,7 +654,16 @@ classdef sweepset < handle
                 this_sweepset.handles.axes.YLabel.String='Z-score';
             else
                 this_sweepset.handles.axes.YLabel.String=this_sweepset.clamp_type;
-            end   
+            end
+            
+            % Update SEM shading
+            temp_data=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
+            SEM=std(temp_data)./sqrt(sum(this_sweepset.sweep_selection));
+            m_average_trace=this_sweepset.average_trace';
+            m_average_trace=[m_average_trace, fliplr(m_average_trace)]';
+            
+            SEM=m_average_trace+[-1.*SEM, fliplr(SEM)]';
+            this_sweepset.handles.SEM.YData=SEM;
         end
         
         function click_on_sweep(this_sweepset, clicked_sweep, click_info)
@@ -720,6 +748,12 @@ classdef sweepset < handle
                         set(this_sweepset.handles.all_sweeps,'visible','on')
                     else
                         set(this_sweepset.handles.all_sweeps,'visible','off')
+                    end
+                case 'display SEM'
+                    if strcmp(this_sweepset.handles.SEM.Visible,'on')
+                        this_sweepset.handles.SEM.Visible='off';
+                    else
+                        this_sweepset.handles.SEM.Visible='on';
                     end
                 case 'standard'
                     this_sweepset.settings.baseline_info.method='standard';
