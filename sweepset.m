@@ -29,7 +29,7 @@ classdef sweepset < handle
     
     
     properties (SetObservable)
-        filename            % .abf file
+        filename            % Usually a .abf file, but can be manually set.
         filepath            % path to file (including filename)
         file_header         % provided by abfload
         data                % sweepset as it is currently used
@@ -150,6 +150,7 @@ classdef sweepset < handle
                     this_sweepset.data(:,1,:)=data;
                     this_sweepset.sampling_frequency=(length(this_sweepset.X_data)-1)/(this_sweepset.X_data(1,end)-this_sweepset.X_data(1,1)); %in KHz
                     this_sweepset.file_header.recChUnits={'other'};
+                    this_sweepset.filename='Unnamed';
                 end
                 
                 if Unable_to_read_input
@@ -268,14 +269,16 @@ classdef sweepset < handle
             this_sweepset.handles.average_trace.UIContextMenu = this_sweepset.handles.average_drop_down.menu;
             
             % Plot the standard error of the mean (light blue shading)
-            temp_data=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
-            XData=this_sweepset.X_data;
-            SEM=std(temp_data)./sqrt(this_sweepset.number_of_sweeps);
-            this_sweepset.handles.SEM=...
-                fill([XData';flipud(XData')],[mean(temp_data)'-SEM';flipud(mean(temp_data)'+SEM')],[0 0 1],...
-                'linestyle','none',...
-                'FaceAlpha',0.3,...
-                'Visible','off');
+            if this_sweepset.number_of_sweeps>1 % Can only plot SEM if more than one sweep available
+                temp_data=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
+                XData=this_sweepset.X_data;
+                SEM=std(temp_data)./sqrt(this_sweepset.number_of_sweeps);
+                this_sweepset.handles.SEM=...
+                    fill([XData';flipud(XData')],[mean(temp_data)'-SEM';flipud(mean(temp_data)'+SEM')],[0 0 1],...
+                    'linestyle','none',...
+                    'FaceAlpha',0.3,...
+                    'Visible','off');
+            end
             
             % Plot vertical lines that indicate baseline start and stop
             this_sweepset.handles.baseline.start=line([this_sweepset.settings.baseline_info.start, this_sweepset.settings.baseline_info.start],[-20000 20000],'Visible','off',...
@@ -451,7 +454,7 @@ classdef sweepset < handle
             % Will present a nice plot (al sweeps as well as average
             % and SEM)
             
-            presentation=figure();
+            presentation=figure('name',this_sweepset.filename);
             % Presentation:
             subplot(2,1,1)
             results=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
@@ -459,7 +462,7 @@ classdef sweepset < handle
             axis off
             subplot(2,1,2)
             XData=this_sweepset.X_data;
-            sem_results=std(results)./sqrt(sqrt(sum(this_sweepset.sweep_selection)));
+            sem_results=std(results)./sqrt(sum(this_sweepset.sweep_selection));
             fill([XData';flipud(XData')],[mean(results)'-sem_results';flipud(mean(results)'+sem_results')],[0 0 1],'linestyle','none','FaceAlpha',0.3);
             hold on
             plot(XData,mean(results));
@@ -471,6 +474,8 @@ classdef sweepset < handle
             else
                 ylabel(this_sweepset.clamp_type)
             end
+            
+            
   
         end
         
@@ -657,13 +662,17 @@ classdef sweepset < handle
             end
             
             % Update SEM shading
-            temp_data=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
-            SEM=std(temp_data)./sqrt(sum(this_sweepset.sweep_selection));
-            m_average_trace=this_sweepset.average_trace';
-            m_average_trace=[m_average_trace, fliplr(m_average_trace)]';
-            
-            SEM=m_average_trace+[-1.*SEM, fliplr(SEM)]';
-            this_sweepset.handles.SEM.YData=SEM;
+            if sum(this_sweepset.sweep_selection)>1
+                temp_data=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
+                SEM=std(temp_data)./sqrt(sum(this_sweepset.sweep_selection));
+                m_average_trace=this_sweepset.average_trace';
+                m_average_trace=[m_average_trace, fliplr(m_average_trace)]';
+
+                SEM=m_average_trace+[-1.*SEM, fliplr(SEM)]';
+                this_sweepset.handles.SEM.YData=SEM;
+            else
+                this_sweepset.handles.SEM.Visible='off';
+            end
         end
         
         function click_on_sweep(this_sweepset, clicked_sweep, click_info)

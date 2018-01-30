@@ -89,6 +89,7 @@ classdef FIP_signal <handle
             settings.smooth_CD=1;
             settings.smooth_data=1;
             settings.fit_405='polyfit_2';
+            settings.sw_size=40; %(s) Sliding window size if used for 405 fit (Data points)
             this_FIP_signal.settings=settings;
             
             % Dealing with input arguments
@@ -129,7 +130,11 @@ classdef FIP_signal <handle
                 error(['Please choose a valid method to import data, either User input, Filename or individual variables.' ...
                 '(FIP_signal is case sensitive.)'])
             end
-                    
+           
+            % Updating crop information
+            this_FIP_signal.settings.crop_info=cell(this_FIP_signal.np_signals,1);
+            
+            
             % Present figure unless supressed by user
             if present_figure
                 this_FIP_signal.present_figure();
@@ -189,8 +194,8 @@ classdef FIP_signal <handle
                         this_FIP_signal.AI_plots=true;
                     end
                     if length(files(i).name)>14 && strcmp(files(i).name(end-14:end),'calibration.jpg')
-                        % found a callibration picture
-                        this_FIP_signal.info.callibration=imread([path files(i).name]);
+                        % found a calibration picture
+                        this_FIP_signal.info.calibration=imread([path files(i).name]);
                         disp(['Loaded ' files(i).name])
                     end
                 end
@@ -287,10 +292,10 @@ classdef FIP_signal <handle
             for i=2:dims(2) % first column is the timeline
                 if this_FIP_signal.log_AI_used(i)
                     this_FIP_signal.handles.logAI_plots{i}=plot(logAI_plot(:,1),logAI_plot(:,i),...
-                        'DisplayName',['AI ' num2str(i)],...
+                        'DisplayName',['AI ' num2str(i)-1],...
                         'UIContextMenu', this_FIP_signal.handles.drop_down.logAI,...
                         'ButtonDownFcn',@this_FIP_signal.mouse_down,...
-                        'Tag',['AI ' num2str(i)]);
+                        'Tag',['AI ' num2str(i)-1]);
                 else
                     this_FIP_signal.handles.logAI_plots{i}='deleted logAI plot, see raw data';
                 end
@@ -309,7 +314,7 @@ classdef FIP_signal <handle
             % Text to indicate which fiber or data the user is looking at
             this_FIP_signal.handles.text_1=uicontrol(gcf,...
                 'Units','normalized',...
-                'Position',[0.83 0.9 0.1 0.05],...
+                'Position',[0.5 0.9 0.1 0.05],...
                 'String',this_FIP_signal.info.names{1},...
                 'Style','text',...
                 'FontSize',20,...
@@ -392,19 +397,20 @@ classdef FIP_signal <handle
             % Default variables
             start_pulse = true; % take start or end of pulse
             threshold = 0.1+3*std(scr.YData);
+            if threshold>1; threshold=1; end
             pulse_per_stamp=1;
             
             % Figure out if the pulses go down or up
             max_signal=max(scr.YData);
             min_signal=min(scr.YData);
-            mean_signal=mean(scr.YData);
+            median_signal=median(scr.YData);
             
-            if abs(mean_signal-min_signal)>abs(mean_signal-max_signal)
-                threshold=mean_signal-threshold;
+            if abs(median_signal-min_signal)>abs(median_signal-max_signal)
+                threshold=median_signal-threshold;
                 stamp_logic=scr.YData<threshold;
                 disp(['Pulse is defined as signal <' num2str(threshold) ' V.']);
             else
-                threshold=mean_signal+threshold;
+                threshold=median_signal+threshold;
                 stamp_logic=scr.YData>threshold;
                 disp(['Pulse is defined as signal >' num2str(threshold) ' V.']);
             end
@@ -456,12 +462,13 @@ classdef FIP_signal <handle
             this_FIP_signal.timestamps_names{nr}=name;
             
             if this_FIP_signal.figure_open
-                subplot(this_FIP_signal.handles.logAI_plot)
                 this_FIP_signal.handles.time_stamp_plots{nr}=...
                     plot(stamps,ones(length(stamps),1)*nr,'x',...
+                    'Parent',this_FIP_signal.handles.logAI_plot,...
                     'UIContextMenu',this_FIP_signal.handles.drop_down.time_stamps,...
                     'Tag',['stamps_' num2str(nr)],...
-                    'ButtonDownFcn',@this_FIP_signal.mouse_down);
+                    'ButtonDownFcn',@this_FIP_signal.mouse_down,...
+                    'DisplayName',name);
             end
             
             % Done
@@ -470,7 +477,7 @@ classdef FIP_signal <handle
             this_FIP_signal.update_plots;
         end
         
-        function PE_plot = peri_event_plot(this_FIP_signal, input, stamps, window)
+        function PE_plot = peri_event_plot(~, input, stamps, window)
             % Makes a peri-event plot (sweepset) from input signal and
             % stamps (events). Inputs should include a timeline in the 2th
             % column. Time should be in s in stamps,input and
@@ -523,6 +530,86 @@ classdef FIP_signal <handle
             PE_plot=sweepset('other data',results);
         end
         
+        function cut(this_FIP_signal,signal,interval)
+            % Will add a to-be-cut interval to settings.crop_info
+            
+            warning('Cut data is in beta and might not always work properly')
+            
+            % Error handling on interval
+            if length(interval)~=2
+                error('Interval should be two values.')
+            elseif interval(1)>interval(2)
+                error('Interval should be from small to large')
+            end
+            
+            this_FIP_signal.settings.crop_info{signal}=[...
+                this_FIP_signal.settings.crop_info{signal},...
+                interval];
+            
+            this_FIP_signal.update_plots;
+        end
+        
+        function cut_logAI(this_FIP_signal, signal_nr, interval, replacement)
+            % Cut data from logAI, for instance osciliations when other
+            % equipment is being turned on and off. The data is cut from
+            % the 'raw' data as stored in the object so it can not be
+            % undone. The data in within the interval is replaced by the
+            % value in replacement
+            
+            % Error handling on interval
+            if length(interval)~=2
+                error('Interval should be two values.')
+            elseif interval(1)>interval(2)
+                error('Interval should be from small to large')
+            end
+            
+            % Check if the user is sure
+            input=questdlg('Are you sure? This can not be undone.','Warning','Yes','No','No');
+            
+            if ~strcmp(input,'Yes')
+                return
+            end
+            
+            [~, start_index]=min(abs(interval(1)-this_FIP_signal.raw_data.logAI(:,1)));
+            [~, end_index]=min(abs(interval(2)-this_FIP_signal.raw_data.logAI(:,1)));
+            
+            this_FIP_signal.raw_data.logAI(start_index:end_index,signal_nr+1)=replacement;
+            
+            this_FIP_signal.update_plots;
+        end
+        
+        function output=apply_crop(this_FIP_signal, input, signal_number)
+            % Will cut data out of FIP_signal (for instance because of
+            % movement artifacts
+            
+            cuttings=this_FIP_signal.settings.crop_info{signal_number};
+            
+            for i=1:2:length(cuttings)
+                [~, start_index]=min(abs(cuttings(i)-input(:,2)));
+                [~, stop_index]=min(abs(cuttings(i+1)-input(:,2)));
+                
+                input=[input(1:start_index,:);...
+                    input(stop_index:end,:)];
+            end
+            
+            output=input;
+        end
+        
+        function show_calibration(this_FIP_signal)
+            % Will present a figure with the fiber bundle layout (if this
+            % is available).
+            
+            if ~isfield(this_FIP_signal.info,'calibration')
+                warning('No calibration .jpg file loaded')
+                return
+            end
+            
+            figure
+            imagesc(this_FIP_signal.info.calibration);
+                
+            
+        end
+        
         function sig_CD=get.sig_CD(this_FIP_signal)
             % Get sig_CD based on the settings
             fs=1/(this_FIP_signal.info.framerate);
@@ -534,6 +621,9 @@ classdef FIP_signal <handle
                 
                 % Adjust the timeline based on the time_offset.
                 sig_CD{i}(:,2)=sig_CD{i}(:,2)-this_FIP_signal.settings.time_offset;
+                
+                % Apply any croppings
+                sig_CD{i}=this_FIP_signal.apply_crop(sig_CD{i},i);
             end
         end
         
@@ -567,7 +657,7 @@ classdef FIP_signal <handle
                         sig_405{i}(:,2)=[0:fs:end_time]';
                     case 'sliding_window'
                         % polyfit_2, but using a sliding window
-                        window_size=400;
+                        window_size=this_FIP_signal.settings.sw_size*this_FIP_signal.info.framerate; %Data points now
                         window_size=window_size-1;
                         sig_405{i}=zeros(length(temp),2);
                         for j=1:window_size:length(temp)-window_size
@@ -584,13 +674,16 @@ classdef FIP_signal <handle
                 
                 % Ajust time based on offset
                 sig_405{i}(:,2)=sig_405{i}(:,2)-this_FIP_signal.settings.time_offset;
+                
+                % Apply any croppings (note: fit using original data...)
+                sig_405{i}=this_FIP_signal.apply_crop(sig_405{i},i);
             end            
         end
         
         function data=get.data(this_FIP_signal)
             % Gets the processed FIP_signal based on the settings
             for i=1:this_FIP_signal.np_signals
-                signal_norm(:,1)=this_FIP_signal.sig_CD{i}(:,1)-this_FIP_signal.sig_405{i}(:,1)+this_FIP_signal.sig_CD{i}(1,1);
+                signal_norm=this_FIP_signal.sig_CD{i}(:,1)-this_FIP_signal.sig_405{i}(:,1)+this_FIP_signal.sig_CD{i}(1,1);
 
                 % check what unit the data should be, row two is SU for data.
                 switch this_FIP_signal.settings.signal_units{i,2}
@@ -774,8 +867,10 @@ classdef FIP_signal <handle
                             this_FIP_signal.handles.time_stamp_plots{i}.XData=this_FIP_signal.timestamps{i};
                             if this_FIP_signal.AI_plots
                                 this_FIP_signal.handles.time_stamp_plots{i}.Visible='off';
+                                this_FIP_signal.handles.logAI_plot.YLimMode='auto';
                             else
                                 this_FIP_signal.handles.time_stamp_plots{i}.Visible='on';
+                                this_FIP_signal.handles.logAI_plot.YLim=[0 length(this_FIP_signal.timestamps)+1];
                             end
                         end
                     end
@@ -903,6 +998,10 @@ classdef FIP_signal <handle
                 'Tag','FIP_plot',...
                 'Label','Restore raw data',...
                 'Callback',@this_FIP_signal.context_menu)
+            uimenu(this_FIP_signal.handles.drop_down.FIP_plot,...
+                'Tag','FIP_plot',...
+                'Label','Legend',...
+                'Callback',@this_FIP_signal.context_menu)
             
             % Data context menu
             this_FIP_signal.handles.drop_down.data=uicontextmenu;
@@ -980,6 +1079,10 @@ classdef FIP_signal <handle
                 'Callback',@this_FIP_signal.context_menu)
             uimenu(this_FIP_signal.handles.drop_down.logAI,...
                 'Label','derive timestamps',...
+                'Tag','log_AI',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu(this_FIP_signal.handles.drop_down.logAI,...
+                'Label','remove noise',...
                 'Tag','log_AI',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu(this_FIP_signal.handles.drop_down.logAI,...
@@ -1166,8 +1269,8 @@ classdef FIP_signal <handle
                     % Make peri-event data based on scr
                     tag=this_FIP_signal.r_mouse_scr.Tag;
                     if strcmp(tag(1:4),'stam') %User clicked on stamps
-                        nr=str2num(tag(8:end));
-                        stamps=this_FIP_signal.timestamps{nr};
+                        stamp_nr=str2num(tag(8:end));
+                        stamps=this_FIP_signal.timestamps{stamp_nr};
                         qstring=['Usign the signal from '...
                         this_FIP_signal.info.names{this_FIP_signal.c_signal}];
                         
@@ -1193,7 +1296,8 @@ classdef FIP_signal <handle
                         input=listdlg('PromptString','Select time stamps:',...
                             'SelectionMode','single',...
                             'ListString',this_FIP_signal.timestamps_names);
-                        stamps=this_FIP_signal.timestamps{input};
+                        stamp_nr=input;
+                        stamps=this_FIP_signal.timestamps{stamp_nr};
                         nr=str2num(tag(6:end));
                         m_data=this_FIP_signal.data{nr};
                         s_units=this_FIP_signal.settings.signal_units{nr,2};
@@ -1203,8 +1307,8 @@ classdef FIP_signal <handle
                     test=this_FIP_signal.peri_event_plot(m_data,stamps,m_window);
                     %Set proper y axis and name bar
                     test.clamp_type=s_units; %see above)
-                    test.filename=this_FIP_signal.timestamps_names{nr};
-                    test.handles.figure.Name=this_FIP_signal.timestamps_names{nr}; 
+                    test.filename=this_FIP_signal.timestamps_names{stamp_nr};
+                    test.handles.figure.Name=this_FIP_signal.timestamps_names{stamp_nr}; 
                     % Store peri event plot in base workspace so user has access to
                     % all settings
                     assignin('base','peri_event',test)
@@ -1258,7 +1362,31 @@ classdef FIP_signal <handle
                     % Check if there are allready timestamps stored
                     if isfield(this_FIP_signal.handles,'time_stamp_plots')
                         warning('There all allready timestamps, those will NOT be offset.')
-                    end  
+                    end
+                case 'remove noise'
+                    % Option to remove specific intervals from logAI
+                    % signal.
+                    % Use the source of the right mouse button click to
+                    % find out the log AI number (stored in the Tag).
+                    AI_np=str2num(this_FIP_signal.r_mouse_scr.Tag(4:end));
+                    % Alow the user to describe the interval that should be
+                    % removed
+                    Interval=inputdlg({'Interval Start (s):',...
+                        'Interval End (s):','Replace with:'},...
+                        'Remove noise',1,{'1','10','0'});
+                    % Should do error handling on user input....(TODO)
+                    this_FIP_signal.cut_logAI(AI_np,...
+                        [str2num(Interval{1}), str2num(Interval{2})],...
+                        str2num(Interval{3}));
+                case 'Legend'
+                    % Display graph legend
+                    source=this_FIP_signal.r_mouse_scr.Parent;
+                    hLegend=findobj(source, 'Type', 'Legend');
+                    if isempty(hLegend)
+                        legend;
+                    else
+                        delete(hLegend)
+                    end
                 otherwise
                     warning('Menu option not yet available.')
             end
@@ -1374,7 +1502,7 @@ classdef FIP_signal <handle
                     end
                     delete(this_FIP_signal.mouse_action.drawing);
                 case 'time_scroll'
-                    % well stop scrolling 
+                    % well, stop scrolling 
                     all_good=true;
                 otherwise
                     warning('mouse error han_115')
@@ -1391,7 +1519,6 @@ classdef FIP_signal <handle
         function UI_used(this_FIP_signal, scr, ev)
             % This function deals with all UI ellement interaction
             
-            %assignin('base','testera',scr)
             button=scr.Tag(1:6); %because put random stuff behind
             
             switch button
