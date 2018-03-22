@@ -2,25 +2,15 @@ classdef FIP_signal <handle
     %FIP_signal Imports fiber photometry signal into FIPster
     %   FIP_signal takes either a .mat file or one or two variables as
     %   input. It will attempt to contruct valid fiber photometry signals
-    %   from the input for multiple fibers and up to three channels. If one
-    %   of the data channels is a signal collected after emission with
-    %   405nm light, it will use that signal to correct the other channels
-    %   for movement artifacts.
+    %   from the input for multiple fibers. If one of the data channels is
+    %   a signal collected after emission with 405nm light, it will use
+    %   that signal to correct the other channel for movement artifacts.
     %
     %
     %   INPUT ARGUMENTS:
     %       - 'Filename',filename       filename should refer to a .mat
     %                                   file which will be imported.
     %       - 'User input'              Will open a file browser window.
-    %       - 'Signal set',signal       Signal is an i,2,n matrix were i is
-    %                                   datapoints and n is the number of
-    %                                   fibers. :,1,: should contain signal
-    %                                   and :,2,: should contain a
-    %                                   timeline. If signal is formatted
-    %                                   i,3,n, :,1: will be assumed to be a
-    %                                   raw signal, :,2,: to be a
-    %                                   refference signal and :,3: to be a
-    %                                   timeline.
     %       - 'no figure'               The object is still created, but no
     %                                   figure. This is efficient for other
     %                                   programs (e.g. Fipster).
@@ -45,7 +35,7 @@ classdef FIP_signal <handle
     end
     
     properties (Dependent)
-        data                    % Ouput data ix2
+        data                    % Ouput data
         sig_CD                  % Calcium-dependend signals
         sig_405                 % Non-CD signals
         logAI                   % Logdata
@@ -388,8 +378,10 @@ classdef FIP_signal <handle
             this_FIP_signal.update_plots;
         end
         
-        function stamps=derive_stamps(this_FIP_signal, scr)
-            % Converts input signal (scr) to time stamps
+        function stamps=derive_stamps(this_FIP_signal, scr, min_pulse_length)
+            % Converts input signal (scr) to time stamps. If
+            % min_pulse_length is empty, min_pulse_length of 0s is
+            % assumed.
             
             % What kind of input signal?
             scr_type='AI'; % only possibility for now
@@ -417,28 +409,45 @@ classdef FIP_signal <handle
 
             % Get info from user about conversion and calculate from that
             if strcmp(scr_type,'AI')
-                
-                % Ask about minium stamp length
-                %min_length=inputdlg('
        
                 time=this_FIP_signal.logAI(:,1);
+                 
+                pulse_start_logic = stamp_logic & ~[0 stamp_logic(1:end-1)];
+                pulse_end_logic = ~stamp_logic & [0 stamp_logic(1:end-1)];
                 
-                
-                if start_pulse
-                    stamp_logic= stamp_logic & ~[0 stamp_logic(1:end-1)];
+                if nargin==3
+                    if length(pulse_start_logic)==length(pulse_end_logic)
+                        pulse_length=time(pulse_end_logic,1)-time(pulse_start_logic,1);
+                    else
+                        error('Error Han_114')
+                    end
+                    
+                    % Only score pulses above the minimum length
+                    stamps=time(pulse_start_logic,1);
+                    stamps=stamps(pulse_length>=min_pulse_length);
+                elseif start_pulse
+                    stamps=time(pulse_start_logic,1);   
+                elseif ~start_pulse
+                    stamps=time(pulse_end_logic,1);   
                 else
-                    stamp_logic= ~stamp_logic & [0 stamp_logic(1:end-1)];
-                end
-                
-                stamps=time(stamp_logic,1);    
+                    error('Error Han_117')
+                end   
             end
-           
-
             
         end
         
         function import_timestamps(this_FIP_signal,stamps,name)
-            % Will import timestamps and plot them
+            % Will import timestamps and plot them. Input arguments are:
+            % the stamps (1,n) array and the name of the stamps ('char')
+            
+            % Error handeling regarding the input arguments
+            if nargin~=3 || ~ischar(name) || ~isnumeric(stamps)
+                warning('Incorect input arguments for import_timestamps.')
+                disp('Please input the following arguments:')
+                disp('1. 1-dimentional array or timestamps.')
+                disp('2. the name of these time stamps (a char)')
+                return
+            end
             
             % Find out how many timestamps arrays there allready are
             nr=length(this_FIP_signal.timestamps)+1;
@@ -610,6 +619,132 @@ classdef FIP_signal <handle
             
         end
         
+        function output=ffourier(this_FIP_signal, fiber, signal, interval, bool_plot)
+            % Will output and (if requested) plot the fast fourier
+            % transform of the input fiber. Signal can be '405nm', 'CD' or
+            % 'data'. Invertval is in seconds. Plot is a boolean on wheter
+            % or not the data should be ploted.
+            
+            switch signal
+                case '405nm'
+                    [~, i_start]=min(abs(this_FIP_signal.sig_405{fiber}(:,2)-interval(1)));
+                    [~, i_end]=min(abs(this_FIP_signal.sig_405{fiber}(:,2)-interval(2)));
+                    Y=fft(this_FIP_signal.sig_405{fiber}(i_start:i_end,1));
+                case 'CD'
+                    [~, i_start]=min(abs(this_FIP_signal.sig_CD{fiber}(:,2)-interval(1)));
+                    [~, i_end]=min(abs(this_FIP_signal.sig_CD{fiber}(:,2)-interval(2)));
+                    Y=fft(this_FIP_signal.sig_CD{fiber}(i_start:i_end,1));
+                case 'data'
+                    [~, i_start]=min(abs(this_FIP_signal.data{fiber}(:,2)-interval(1)));
+                    [~, i_end]=min(abs(this_FIP_signal.data{fiber}(:,2)-interval(2)));
+                    Y=fft(this_FIP_signal.data{fiber}(i_start:i_end,1));
+                otherwise
+                    error(['Unknown input: ', signal ' please input 405nm, CD or data.'])
+            end
+            
+            % Length of input signal
+            L=i_end-i_start+1;
+            
+            % Spectra
+            P2 = abs(Y/L);
+            P1 = P2(1:round(L/2));
+            P1(2:end-1) = 2*P1(2:end-1);
+            
+            % Frequency domain
+            Fs=this_FIP_signal.info.framerate;
+            f = Fs*(0:(L/2))/L;
+            
+            % Collect data
+            output(:,1)=P1;
+            output(:,2)=f;
+            
+            % Plot if requested
+            if bool_plot
+                figure
+                plot(f,P1) 
+                title('Single-Sided Amplitude Spectrum of X(t)')
+                xlabel('f (Hz)')
+                ylabel('|P1(f)|')
+            end
+
+        end
+        
+        function output=find_peaks(this_FIP_signal, fiber, signal, interval, prominence)
+            % This method will 1. detrend the input signal. 2. find peaks
+            % in the detrended signal that are above prominence. 3. plot
+            % the cumulative distribution of the peaks. Fiber is the signal
+            % that should be analysed. Signal can be '405nm','CD','data'.
+            % The interval is the time interval that will be analyzed,
+            % while prominence is the minimum change in the unit of the
+            % input signal.
+            
+            % Explain the method to the user if they put in to few
+            % arguments
+            if nargin<5
+                disp('To run the find_peaks method please input the following arguments: ')
+                disp('1. the fiber number.')
+                disp('2. the signal type, this can be ''data'', ''CD'' or ''405nm.''')
+                disp('3. the interval, for instance [1 100] (1 to 100 sec).')
+                disp('4. the minimum peak prominence. For instance a dF/F or 0.05.')
+                disp('Example: >>signal.find_peaks(1,''data'',[1 100], 0.05);')
+                return
+            end
+            
+            % Collect the signal to be analyzed
+            switch signal
+                case '405nm'
+                    [~, i_start]=min(abs(this_FIP_signal.sig_405{fiber}(:,2)-interval(1)));
+                    [~, i_end]=min(abs(this_FIP_signal.sig_405{fiber}(:,2)-interval(2)));
+                    Y=this_FIP_signal.sig_405{fiber}(i_start:i_end,:);
+                case 'CD'
+                    [~, i_start]=min(abs(this_FIP_signal.sig_CD{fiber}(:,2)-interval(1)));
+                    [~, i_end]=min(abs(this_FIP_signal.sig_CD{fiber}(:,2)-interval(2)));
+                    Y=this_FIP_signal.sig_CD{fiber}(i_start:i_end,:);
+                case 'data'
+                    [~, i_start]=min(abs(this_FIP_signal.data{fiber}(:,2)-interval(1)));
+                    [~, i_end]=min(abs(this_FIP_signal.data{fiber}(:,2)-interval(2)));
+                    Y=this_FIP_signal.data{fiber}(i_start:i_end,:);
+                otherwise
+                    error(['Unknown input: ', signal ' please input 405nm, CD or data.'])
+            end
+            
+            % Detrend (only works with bioinformatics toolbox installed)
+            try
+                Y_detrend=msbackadj(Y(:,2),Y(:,1),'Showplot',1);
+            catch
+                warning('Unable to detrend signal, please install the bioinformatics toolbox.')
+                disp('Continuing method without detrending the signal.')
+                Y_detrend=Y;
+            end
+            
+            % Find peaks using the prominence threshold.
+            % Note that a good prominence threshold could be a certain MAD
+            % threshold
+            [peaks, locs]=findpeaks(Y_detrend,'MinPeakProminence',prominence);
+            
+            % Collect the output
+            output(:,1)=peaks;
+            output(:,2)=Y(locs,2);
+            
+            % Display the events
+            figure('Units','normalized',...
+                'Position',[0.2 0.5 0.7 0.4]);
+            subplot(1,2,1)
+            plot(Y(:,2),Y_detrend);
+            hold on
+            plot(output(:,2),output(:,1),'x');
+            xlabel('time (s)')
+            subplot(1,2,2)
+            cdfplot(Y_detrend);
+            hold on
+            
+            % Print data
+            frequency=length(peaks)/(interval(2)-interval(1));
+            amplitude=mean(peaks);
+            disp(['Event frequency: ' num2str(frequency) 'Hz'])
+            disp(['Mean amplitude: ' num2str(amplitude)]);
+        end
+        
         function sig_CD=get.sig_CD(this_FIP_signal)
             % Get sig_CD based on the settings
             fs=1/(this_FIP_signal.info.framerate);
@@ -723,14 +858,26 @@ classdef FIP_signal <handle
             logAI=m_logAI;
         end
         
-    end
-    
-%%%%%%%%%%%%%%%%%%%%%% Callbacks & other functions %%%%%%%%%%%%%%%%%%%%%%%%
-
-    methods (Access = private)
+        function manual_time_stamp(this_FIP_signal,stamp_nr)
+            % This function will add a timestamp to the time stamps series
+            % in cell 'stamps_nr'. If these do not exist the user will be
+            % prompted to make a new timestamps series. The time of the
+            % stamps will be this_fip_signal.c_time.
+            
+            time=this_FIP_signal.c_time;
+            
+            if length(this_FIP_signal.timestamps)>=stamp_nr
+                this_FIP_signal.timestamps{stamp_nr}=[this_FIP_signal.timestamps{stamp_nr}, time];
+            else
+                disp('Stamps do not exist.')
+            end
+            
+            
+            
+        end
         
         function update_plots(this_FIP_signal, varargin)
-            % Will update all plots
+            % Will update all plots (special function)
             
             notify(this_FIP_signal,'state_change');
             
@@ -865,6 +1012,7 @@ classdef FIP_signal <handle
                     if isfield(this_FIP_signal.handles,'time_stamp_plots') %there are timestamps
                         for i=1:length(this_FIP_signal.handles.time_stamp_plots)
                             this_FIP_signal.handles.time_stamp_plots{i}.XData=this_FIP_signal.timestamps{i};
+                            this_FIP_signal.handles.time_stamp_plots{i}.YData=ones(1,length(this_FIP_signal.timestamps{i}))*i;
                             if this_FIP_signal.AI_plots
                                 this_FIP_signal.handles.time_stamp_plots{i}.Visible='off';
                                 this_FIP_signal.handles.logAI_plot.YLimMode='auto';
@@ -931,6 +1079,11 @@ classdef FIP_signal <handle
                 'XData',[m_c_time m_c_time],...
                 'YData',[temp(1) temp(2)]);
         end
+    end
+    
+%%%%%%%%%%%%%%%%%%%%%% Callbacks & other functions %%%%%%%%%%%%%%%%%%%%%%%%
+
+    methods (Access = private)
         
         function close_req(this_FIP_signal, scr, ev)
             % deals with closing of the object
@@ -1521,13 +1674,15 @@ classdef FIP_signal <handle
             
             button=scr.Tag(1:6); %because put random stuff behind
             
+            % The switch block is using the tag of the pressed button
+            % (in scr) to figure out witch button was pressed.
             switch button
-                case 'signal'
-                    index=find('_'==scr.Tag,1)+1;
+                case 'signal' % One of the signal check boxes
+                    index=find('_'==scr.Tag,1)+1; % find which box
                     i=str2num(scr.Tag(index:end));
                     this_FIP_signal.fibers_shown(i)=logical(scr.Value);
                     this_FIP_signal.update_plots;
-                case 'data_s'
+                case 'data_s' % The normalized signal button
                     if this_FIP_signal.raw_signal
                         scr.String='raw signal';
                     else
@@ -1536,11 +1691,12 @@ classdef FIP_signal <handle
                         
                     this_FIP_signal.raw_signal=~this_FIP_signal.raw_signal;
                     this_FIP_signal.update_plots;
-                case 'time_s'
+                case 'time_s' % I forgot what this button is
+                    disp('Using mystery button now!!')
                     m_c_time=scr.Value;
                     this_FIP_signal.c_time=m_c_time;
                     this_FIP_signal.update_plots('type','new_time');
-                case 'stamps'
+                case 'stamps'% Plot time stamps or logAI
                     this_FIP_signal.AI_plots=~this_FIP_signal.AI_plots;
                     this_FIP_signal.update_plots;
                 otherwise

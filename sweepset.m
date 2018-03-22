@@ -427,6 +427,7 @@ classdef sweepset < handle
         function show_baseline(this_sweepset)
             % Show the start and the stop timepoints of the substracted
             % baseline under 'standard'.
+            
             if strcmp(this_sweepset.handles.baseline.start.Visible,'on')
                 this_sweepset.handles.baseline.start.Visible='off';
                 this_sweepset.handles.baseline.end.Visible='off';
@@ -459,6 +460,7 @@ classdef sweepset < handle
             subplot(2,1,1)
             results=squeeze(this_sweepset.data(:,:,this_sweepset.sweep_selection))';
             imagesc(results(:,:));
+            title(['Response to: ' this_sweepset.filename])
             axis off
             subplot(2,1,2)
             XData=this_sweepset.X_data;
@@ -474,9 +476,7 @@ classdef sweepset < handle
             else
                 ylabel(this_sweepset.clamp_type)
             end
-            
-            
-  
+
         end
         
         function refocus(this_sweepset)
@@ -626,6 +626,8 @@ classdef sweepset < handle
             
             switch ev.Name
                 case 'sweep_selection'
+                    % Different sweeps selected, update stuff that is based
+                    % on sweep selection
                     this_sweepset.data=this_sweepset.base_data;
                     notify(this_sweepset,'selection_change')
                     notify(this_sweepset,'state_change')
@@ -641,15 +643,32 @@ classdef sweepset < handle
                         end
                     end
                     
-                case 'settings'
+                case 'settings' 
+                    % Setting chaned, update most stuff
+                    
+                    % Run the base data getter
                     this_sweepset.data=this_sweepset.base_data;
+                    
+                    % Update the average trace
                     set(this_sweepset.handles.average_trace,'YData',this_sweepset.average_trace);
+                    
+                    % Update the currently selected sweep and all other
+                    % sweeps
                     set(this_sweepset.handles.current_sweep,'YData',this_sweepset.data(:,1,this_sweepset.current_sweep));
                     for i=1:length(this_sweepset.handles.all_sweeps)
                         set(this_sweepset.handles.all_sweeps(i),'YData',squeeze(this_sweepset.data(:,1,i)));
                     end
                     set(this_sweepset.handles.average_trace,'YData',this_sweepset.average_trace);
                     
+                    % Update the lines indicating baseline start and stop
+                    this_sweepset.handles.baseline.start.XData=...
+                        [this_sweepset.settings.baseline_info.start,...
+                        this_sweepset.settings.baseline_info.start];
+                    this_sweepset.handles.baseline.end.XData=...
+                        [this_sweepset.settings.baseline_info.end,...
+                        this_sweepset.settings.baseline_info.end]; 
+                    
+                    % Notify the listener for other apps
                     notify(this_sweepset,'state_change')
             end
             
@@ -864,7 +883,7 @@ classdef sweepset < handle
             % Figure out what is being draged
             switch this_sweepset.settings.dragdrop
                 case 'baseline_end'
-                     if punter(1,1)<=this_sweepset.settings.baseline_info.start
+                    if punter(1,1)<=this_sweepset.settings.baseline_info.start
                         punter(1,1)=this_sweepset.settings.baseline_info.start+1;
                     end
                     set(this_sweepset.handles.baseline.end,'Xdata',[punter(1,1) punter(1,1)]);
