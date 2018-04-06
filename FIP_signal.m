@@ -449,6 +449,11 @@ classdef FIP_signal <handle
                 return
             end
             
+            % Error handeling regarding the input stamps
+            if isempty(stamps) % no stamps
+                error('There are no numeric stamps in this array.')
+            end
+            
             % Find out how many timestamps arrays there allready are
             nr=length(this_FIP_signal.timestamps)+1;
             
@@ -492,50 +497,83 @@ classdef FIP_signal <handle
             % column. Time should be in s in stamps,input and
             % window.
             
-            % Note: this function assumes equal framerate over the whole
+            % Note: this method assumes equal framerate over the whole
             % input.
+            
+            % If only one dataset is given, we are still putting it in a
+            % cell to make the rest of the code more efficient. Normally
+            % every cell can have it's own dataset.
+            if ~iscell(input)
+                input={input};
+            end
             
             % Basic variables
             number_of_events=length(stamps);
-            framerate=round(length(input(:,2))/(input(end,2)-input(1,2)));
-            timeline=[-window:(1/framerate):window]*1000; %from s to ms
             original_window=window;
-            window=window*framerate;
             
-            % Check if sufficient data is available around every timestamps
-            % (maybe timestamps right at begining or end of session).
-            check_finished_start=false;
-            check_finished_end=false;
-            
-            while ~check_finished_start %First early stamps
-                if stamps(1)<original_window
-                    stamps=stamps(2:end);
-                    warning('Removed early time stamp, because no FIP data available.')
-                else
-                    check_finished_start=true;
-                end  
-            end
-            
-            end_time=input(end,2);
-            
-            while ~check_finished_end
-                if (end_time-stamps(end))<original_window
-                    stamps=stamps(1:end-1);
-                    warning('Removed time stamp at the end, because no FIP data available.')
-                else
-                    check_finished_end=true;
+            for i=1:length(input) % for every cell=fiber/channel
+                % Figure out the time line based on the length of the dataset
+                % in the first cell
+                framerate=round(length(input{i}(:,2))/(input{i}(end,2)-input{i}(1,2)));
+                timeline=[-original_window:(1/framerate):original_window]*1000; %from s to ms
+                window=original_window*framerate; % Number of datapoints in window
+
+                % Check if sufficient data is available around every timestamps
+                % (maybe timestamps right at begining or end of session).
+                check_finished_start=false;
+                check_finished_end=false;
+
+                while ~check_finished_start %First early stamps
+                    if stamps(1)<original_window
+                        stamps=stamps(2:end);
+                        warning('Removed early time stamp, because no FIP data available.')
+                    else
+                        check_finished_start=true;
+                    end  
+                end
+
+                end_time=input{i}(end,2);
+
+                while ~check_finished_end
+                    if (end_time-stamps(end))<original_window
+                        stamps=stamps(1:end-1);
+                        warning('Removed time stamp at the end, because no FIP data available.')
+                    else
+                        check_finished_end=true;
+                    end
+                end
+
+                number_of_events=length(stamps);
+                
+                % Note, a potential error is that datasets might not have
+                % exactly the same shape, for instance because some data
+                % from one fiber is missing. This is an error that should
+                % be worked on later.
+                % Another reason this could fail is when the channels are
+                % recorded at a different frame rate.
+                
+                if i==1 %Make results.
+                    % The reason this happens inside the for loop is that
+                    % on later itterations there will be some error
+                    % handeling here to make sure the input data is even
+                    % processed correctly if not the same amounth of data
+                    % is available from every fiber.
+                    
+                    % sweeps x measurements x fibers, 1 extra sweep to
+                    % accomodate a time line on top.
+                    % (fibers are channels in Sweepset object)
+                    results=zeros(number_of_events+1, 2*window+1, length(input));
+                end
+                
+                results(1,:,i)=timeline;
+
+                % This is where we actually store the data
+                for j=1:number_of_events
+                    [~, index]=min(abs(stamps(j)-input{i}(:,2)));
+                    results(j+1,:,i)=input{i}(index-window:index+window,1);
                 end
             end
             
-            number_of_events=length(stamps);
-            
-            results=zeros(number_of_events+1,2*window+1);
-            results(1,:)=timeline;
-            
-            for i=1:number_of_events
-                [~, index]=min(abs(stamps(i)-input(:,2)));
-                results(i+1,:)=input(index-window:index+window,1);
-            end
             PE_plot=sweepset('other data',results);
         end
         
@@ -1424,7 +1462,7 @@ classdef FIP_signal <handle
                     if strcmp(tag(1:4),'stam') %User clicked on stamps
                         stamp_nr=str2num(tag(8:end));
                         stamps=this_FIP_signal.timestamps{stamp_nr};
-                        qstring=['Usign the signal from '...
+                        qstring=['Using the signal from '...
                         this_FIP_signal.info.names{this_FIP_signal.c_signal}];
                         
                         input=questdlg(qstring,'Select data',...
@@ -1435,13 +1473,13 @@ classdef FIP_signal <handle
 
                         switch input % Figure out with data to use
                             case 'Calcium Dependend'
-                                m_data=this_FIP_signal.sig_CD{this_FIP_signal.c_signal};
+                                m_data=this_FIP_signal.sig_CD;
                                 s_units=this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,1};
                             case '405nm signal'
-                                m_data=this_FIP_signal.sig_405{this_FIP_signal.c_signal};
+                                m_data=this_FIP_signal.sig_405;
                                 s_units=this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,1};
                             case 'normalized signal'
-                                m_data=this_FIP_signal.data{this_FIP_signal.c_signal};
+                                m_data=this_FIP_signal.data;
                                 s_units=this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,2};
                         end
                     elseif strcmp(tag(1:4),'data') % User clicked on data
@@ -1456,12 +1494,13 @@ classdef FIP_signal <handle
                         s_units=this_FIP_signal.settings.signal_units{nr,2};
                     end 
                     % Plot using this data
-                    m_window=15; %Will work on changing this later
+                    m_window=10; %Will work on changing this later
                     test=this_FIP_signal.peri_event_plot(m_data,stamps,m_window);
                     %Set proper y axis and name bar
                     test.clamp_type=s_units; %see above)
                     test.filename=this_FIP_signal.timestamps_names{stamp_nr};
-                    test.handles.figure.Name=this_FIP_signal.timestamps_names{stamp_nr}; 
+                    test.handles.figure.Name=[this_FIP_signal.timestamps_names{stamp_nr} ' ' input];
+                    test.current_channel=this_FIP_signal.c_signal;
                     % Store peri event plot in base workspace so user has access to
                     % all settings
                     assignin('base','peri_event',test)

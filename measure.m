@@ -234,7 +234,7 @@ end_time=str2num(get(handles.measurement_end,'String'));
 
 results=zeros(paired_sweepset.number_of_sweeps,1);
 for i=1:paired_sweepset.number_of_sweeps
-    results(i)=sum(paired_sweepset.data(start_index:end_index,1,i));
+    results(i)=sum(paired_sweepset.data(start_index:end_index,paired_sweepset.current_channel,i));
 end
 results=results(paired_sweepset.sweep_selection);
 
@@ -242,8 +242,12 @@ figure()
 plot(results)
 xlabel('sweep #')
 ylabel('Y values')
-assignin('base','testera',results)
+assignin('base','AUC_data',results)
+disp('Data stored in workspace as AUC_data.')
 
+% Calculate AUC of the average sweep
+data=sum(paired_sweepset.average_trace(start_index:end_index));
+disp(['AUC of average trace: ' num2str(data)]);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Callbacks %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -257,7 +261,6 @@ delete(handles.display_handles.peak_down)
  
 delete(src)
 delete(handles.listener)
- 
  
 function update_everything(scr,ev,handles)
 
@@ -274,7 +277,7 @@ if get(handles.select_average,'value')==1
     trace_to_analyse=get(average_trace_handle,'YData');
 
 else
-    trace_to_analyse=paired_sweepset.data(:,1,paired_sweepset.current_sweep);
+    trace_to_analyse=paired_sweepset.data(:,paired_sweepset.current_channel,paired_sweepset.current_sweep);
 end    
     
 SF=paired_sweepset.sampling_frequency;
