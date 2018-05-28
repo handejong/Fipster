@@ -234,6 +234,13 @@ classdef sweepset < handle
             this_sweepset.settings.mouse_release=false;
             this_sweepset.settings.dragdrop=''; % What is currently being draged
             
+            % Set the default baseline to -2000:-50 if that that is within
+            % the data.
+            if this_sweepset.X_data(1)<-2000
+                this_sweepset.settings.baseline_info.start=-2000;
+                this_sweepset.settings.baseline_info.end=-50;
+            end
+                
             % Make a figure
             this_sweepset.handles.figure=figure('position',[0,0,700,500]);
             set(this_sweepset.handles.figure,'name',char(this_sweepset.filename),'numbertitle','off');
@@ -516,13 +523,18 @@ classdef sweepset < handle
             % and SEM)
             c_channel=this_sweepset.current_channel;
             
-            presentation=figure('name',this_sweepset.filename);
             % Presentation:
+            presentation=figure('name',this_sweepset.filename);
+            
+            % Heat plot
             subplot(2,1,1)
             results=squeeze(this_sweepset.data(:,c_channel,this_sweepset.sweep_selection))';
             imagesc(results(:,:));
             title(['Response to: ' this_sweepset.filename])
-            axis off
+            
+            % Heat plot axis
+            set(gca,'XTick',[]);
+
             subplot(2,1,2)
             XData=this_sweepset.X_data;
             sem_results=std(results)./sqrt(sum(this_sweepset.sweep_selection));
@@ -553,6 +565,16 @@ classdef sweepset < handle
             
             this_sweepset.handles.axes.XLim=[disp_left disp_right];
             this_sweepset.handles.axes.YLim=[floor-difference roof+difference];
+        end
+        
+        function subset(this_sweepset,start,stop)
+            %SUBSET helps with setting a selection of sweeps.
+            %   this function will select all sweeps between the start and
+            %   stop sweep and deselect all other sweeps.
+            
+            new_selection=false(size(this_sweepset.sweep_selection));
+            new_selection(start:stop)=true;
+            this_sweepset.sweep_selection=new_selection;
         end
         
         function baseline=get.baseline(this_sweepset)
