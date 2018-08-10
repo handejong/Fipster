@@ -25,6 +25,7 @@ classdef FIP_acquisition < handle
         aq_settings     % Struct with acquisition settings
         plt_settings    % Struct with plot settings
         handles         % Mostly plot handles
+        notes           % Cell struct with notes taken during recordings
     end
     
     methods
@@ -79,6 +80,9 @@ classdef FIP_acquisition < handle
             obj.plt_settings.type = '.';
             obj.plt_settings.smooth = 1;
             obj.plt_settings.live_feed = false; 
+            
+            % Store empty notes
+            obj.notes={'These notes are saved after recording.'};
         end
         
         function calibrate(obj)
@@ -168,10 +172,11 @@ classdef FIP_acquisition < handle
             %START_ACQUISITION does the actual data acquisition
             
             % First check if properly calibrated
-            % obj.
+            
+            % %%% TO DO! %%%
             
             % Check the filename, and increment if neccesary
-            % This should be a separate function
+            % This could be a separate function
             if isempty(obj.filename)
                 temp=inputdlg('Please give a valid filename: ');
                 obj.filename=temp{1};
@@ -180,6 +185,7 @@ classdef FIP_acquisition < handle
                 obj.filename=[obj.filename '_copy'];
             end
             
+            
             % Acquisition variables
             n_frame = 0;
             data = zeros(obj.aq_settings.fibers, 1);
@@ -187,9 +193,8 @@ classdef FIP_acquisition < handle
             ref = zeros(size(signal));
             lookback = (obj.plt_settings.lookback * obj.aq_settings.rate) / obj.aq_settings.channels;
             
+           
             % Plot
-            % Plot smooth signal (based on settings)
-            % Add title to graphs
             main_figure = figure;
             for i = 1:obj.aq_settings.fibers
                 subplot(obj.aq_settings.fibers,1,i)
@@ -206,6 +211,7 @@ classdef FIP_acquisition < handle
                 xlabel('time (s)')
             end
             
+            
             % Make a figure that shows a live feed of the fibers
             if obj.plt_settings.live_feed
                 figure
@@ -213,17 +219,37 @@ classdef FIP_acquisition < handle
                 caxis([200 250])
             end
             
-            % Make a stop button
-            % Add timer
+            
+            % Make a figure for the stop button and notepad
             stop_figure = figure('Menubar','none',...
                 'CloseRequestFcn', @obj.uncloseable);
-            stop_figure.Position(3:4) = [200, 100];
+            stop_figure.Position(3:4) = [300, 400];
+            
+            
+            % Stop button
             stop_button = uicontrol(stop_figure,...
                 'Units','normalized',...
-                'Position',[0.1 0.4 0.8 0.2],...
+                'Position',[0.1 0.85 0.8 0.1],...
                 'Style','togglebutton',...
                 'String','Stop acquisition',...
                 'HorizontalAlignment','center');
+            
+            % Notepad
+            uicontrol(stop_figure,...
+                'Style','text',...
+                'String','Add notes below: ',...
+                'Units','normalize',...
+                'Position',[0.1 0.73 0.8 0.1],...
+                'HorizontalAlignment','left');
+            
+            notes_input = uicontrol(stop_figure,...
+                'Style','edit',...
+                'Units','normalized',...
+                'Position',[0.1 0.1 0.8 0.66],...
+                'Max', 100,...
+                'HorizontalAlignment','left',...
+                'String',obj.notes);
+            
             
             % Start the camera and daq depending on the camera type
             obj.camera_setup();
@@ -232,6 +258,7 @@ classdef FIP_acquisition < handle
                 obj.daq_setup();
                 startBackground(obj.daq_settings.session)
             end
+            
             
             %%%%%%%%%%%%%%%%%%%%%% Acquisition loop %%%%%%%%%%%%%%%%%%%%%%%
             should_be_time = 0;
@@ -310,7 +337,7 @@ classdef FIP_acquisition < handle
                     ref(sr_pair, 2, :) = toc(start_time);
                 end
                 
-                % Update live feed
+                % Update live feed (if requested)
                 if obj.plt_settings.live_feed && mod(n_frame,obj.aq_settings.channels) == 0
                     live_feed.CData=img;
                 end
@@ -361,6 +388,9 @@ classdef FIP_acquisition < handle
             if obj.cam_settings.vid.FramesAvailable~=0
                 warning(['Camera has ' num2str(obj.cam_settings.vid.FramesAvailable) ' frames available, this could be a problem.'])
             end    
+            
+            % Collect all the notes
+            obj.notes = notes_input.String;
             
             % Delete  stop button
             close(stop_figure, 'force')
@@ -415,10 +445,11 @@ classdef FIP_acquisition < handle
             % Save the data
             framerate = obj.aq_settings.rate;
             labels = obj.aq_settings.labels;
+            notes = obj.notes;
             if obj.aq_settings.channels==1
-                save(obj.filename,'signal','framerate','labels','-v7.3')
+                save(obj.filename,'signal','framerate','labels','notes','-v7.3')
             else
-                save(obj.filename,'signal','ref','framerate','labels','-v7.3')
+                save(obj.filename,'signal','ref','framerate','labels','notes','-v7.3')
             end
             imwrite(obj.aq_settings.calibImg.cdata, [obj.filename '_calibration.jpg'], 'JPEG') % calibration image
 
@@ -527,7 +558,7 @@ classdef FIP_acquisition < handle
             camDeviceN = obj.cam_settings.in_use;
             
             
-            % First check if allready setup, o
+            % First check if allready setup
             if isfield(obj.cam_settings,'setup_for') && obj.cam_settings.setup_for==camDeviceN
                 % don't have to remake object, but should still run other
                 % settings because ROI and exposure might have changed.

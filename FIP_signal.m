@@ -32,6 +32,7 @@ classdef FIP_signal <handle
         np_signals              % Number of signals
         handles                 % Of all figure ellements
         window                  % 'all time' or time window in sec.
+        measurement_notes       % Notes taken during measurement
     end
     
     properties (Dependent)
@@ -212,9 +213,12 @@ classdef FIP_signal <handle
                             this_FIP_signal.info.names{j}=labels{j};
                         end
                         
+                    case 'notes'
+                        this_FIP_signal.measurement_notes = notes;
+                        
                     case {'this_FIP_signal' 'filename' 'path' 'ref' 'framerate'}
                         % Good, but do nothing
-                        all_good=true;
+                        all_good = true;
                         
                     otherwise
                         warning(['Variable ' variables{i} ' was not imported'])
@@ -426,6 +430,26 @@ classdef FIP_signal <handle
                 'Tag','data_switch',...
                 'Callback',@this_FIP_signal.UI_used,...
                 'HorizontalAlignment','left');
+            
+            % If there are any measurment notes, present those too.
+            if ~isempty(this_FIP_signal.measurement_notes)
+                
+                % Make figure to present notes
+                temp_handle = figure('Menubar','none',...
+                    'Name','Measurement notes',...
+                    'NumberTitle','off');
+                temp_handle.Position(3:4) = [300, 400];
+                
+                % Notes themselves
+                uicontrol(temp_handle,...
+                'Style','text',...
+                'Units','normalized',...
+                'Position',[0.1 0.1 0.8 0.8],...
+                'Max', 100,...
+                'HorizontalAlignment','left',...
+                'String',this_FIP_signal.measurement_notes);
+                
+            end
 
             % Add listeners
             this_FIP_signal.handles.listeners{1}=addlistener(this_FIP_signal,...
@@ -439,16 +463,18 @@ classdef FIP_signal <handle
             this_FIP_signal.update_plots;
         end
         
-        function stamps = derive_stamps(this_FIP_signal, scr, min_pulse_length)
-            % Converts input signal (scr) to time stamps. If
-            % min_pulse_length is empty, min_pulse_length of 0s is
-            % assumed.
+        function stamps = derive_stamps(this_FIP_signal, scr, min_pulse_length, max_pulse_length, rising)
+            % Converts input signal (scr) to time stamps. It is possible to
+            % run this function with only 2 arguments (including the object
+            % itself) but if a min or a max pulse length is specified, the
+            % other arguments have to be specified as well. Rising is a
+            % bool (true/false) on wether we should grab the end or the
+            % beginning of a ttl pulse as a time point.
             
             % What kind of input signal?
             scr_type='AI'; % only possibility for now
             
             % Default variables
-            start_pulse = true; % take start or end of pulse
             threshold = 0.1+3*std(scr.YData);
             if threshold>1; threshold=1; end
             pulse_per_stamp=1;
@@ -476,22 +502,24 @@ classdef FIP_signal <handle
                 pulse_start_logic = stamp_logic & ~[0 stamp_logic(1:end-1)];
                 pulse_end_logic = ~stamp_logic & [0 stamp_logic(1:end-1)];
                 
-                if nargin==3
+                % Check if more than standard input arguments are given
+                if nargin>2
                     if length(pulse_start_logic)==length(pulse_end_logic)
                         pulse_length=time(pulse_end_logic,1)-time(pulse_start_logic,1);
+                        
+                        % check rising or falling ttl pulse
+                        if rising
+                            stamps=time(pulse_start_logic,1);
+                            stamps=stamps(pulse_length>=min_pulse_length & pulse_length<=max_pulse_length);
+                        else
+                            stamps=time(pulse_end_logic,1);
+                            stamps=stamps(pulse_length>=min_pulse_length & pulse_length<=max_pulse_length);
+                        end
                     else
                         error('Error Han_114')
                     end
-                    
-                    % Only score pulses above the minimum length
-                    stamps=time(pulse_start_logic,1);
-                    stamps=stamps(pulse_length>=min_pulse_length);
-                elseif start_pulse
-                    stamps=time(pulse_start_logic,1);   
-                elseif ~start_pulse
-                    stamps=time(pulse_end_logic,1);   
-                else
-                    error('Error Han_117')
+                else % Just the standard, rising side of every pulse
+                    stamps=time(pulse_start_logic,1);    
                 end   
             end
             
@@ -1375,6 +1403,10 @@ classdef FIP_signal <handle
                 'Tag','log_AI',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu(this_FIP_signal.handles.drop_down.logAI,...
+                'Label','derive timestamps advanced',...
+                'Tag','log_AI',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu(this_FIP_signal.handles.drop_down.logAI,...
                 'Label','remove noise',...
                 'Tag','log_AI',...
                 'Callback',@this_FIP_signal.context_menu)
@@ -1558,6 +1590,20 @@ classdef FIP_signal <handle
                         stamps=this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr);
                         name=[tag '_derived'];
                     end
+                    % Store them in the FIP_signal object and name them
+                    this_FIP_signal.import_timestamps(stamps,name);
+                case 'derive timestamps advanced'
+                    % Derive timestamps from input
+                    tag=this_FIP_signal.r_mouse_scr.Tag;
+                    input=inputdlg({'minimum stamp interval (s): ', 'maximujm stamp interval (s): ', 'rising edge (y/n): (s)'});
+                    if strcmp(input{3},'y')
+                        rising = true;
+                    else
+                        rising = false;
+                    end
+                    stamps=this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr,...
+                        str2num(input{1}), str2num(input{2}), rising);
+                    name=[tag '_derived'];
                     % Store them in the FIP_signal object and name them
                     this_FIP_signal.import_timestamps(stamps,name);
                 case 'peri-event plot'
