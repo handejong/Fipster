@@ -19,6 +19,8 @@ classdef FIP_signal <handle
     %       - import_timestamps         Will import timestamps. Arugments
     %                                   should be the stamps (array) and
     %                                   the name of the stamps (char).
+    %       - peri_event_plot           Will make a peri-event plot using
+    %                                   the sweepset class.
     %
     % FIP_signal is part of FIPster. FIPster is made by Johannes de Jong,
     % j.w.dejong@berkeley.edu
@@ -90,28 +92,49 @@ classdef FIP_signal <handle
                 if ~skipp_next
                     switch varargin{i}
                         case 'Filename'
+                            % Check if there is not allready data loaded
                             if data_loaded
                                 error('Please choose only one method to import data, either User input, Filename or individual variables')
                             end
+                            
+                            % find the file and open it
                             path=which(varargin{i+1});
                             path=path(1:end-length(varargin{i+1}));      
                             this_FIP_signal.load_file(varargin{i+1},path);
                             skipp_next=true;
                             data_loaded=true;
+                        
                         case 'User input'
+                            % Check if there is not allready data loaded
                             if data_loaded
                                 error('Please choose only one method to import data, either User input, Filename or individual variables')
                             end
                             [filename, path]=uigetfile({'*.mat'},'select file','MultiSelect','off');
+                            
+                            % If the user presses cancel
+                            if filename==0
+                                disp('No data loaded.')
+                                return
+                            end
+                            
+                            % Load the data
                             this_FIP_signal.load_file(filename,path);
                             data_loaded=true;
+                            
                         case 'no figure'
+                            % Do not present a figure
                             present_figure=false;
+                            
                         otherwise
+                            % Unrecognized input
                             warning(['input ' varargin{i} ' not recognized.'])
                     end
                 else
+                    % This is because some inputs required two arguments.
+                    % For instance, Filename followed by the input path. In
+                    % that case this loop should skipp the second argument.
                     skipp_next=false;
+                    
                 end
             end
             disp(['Loaded ' num2str(this_FIP_signal.np_signals) ' signals.'])
@@ -132,6 +155,7 @@ classdef FIP_signal <handle
             else
                 this_FIP_signal.figure_open=false;
             end    
+            
         end
         
         function load_file(this_FIP_signal, filename, path)
@@ -162,6 +186,7 @@ classdef FIP_signal <handle
                             
                             this_FIP_signal.np_signals=this_FIP_signal.np_signals+1;
                         end
+                        
                     case 'signal' % Source is the FIP_acquisition, part of Fipster
                         for j=1:length(signal(1,1,:))
                             % Note these have a timeline. Timeline for ref
@@ -170,28 +195,48 @@ classdef FIP_signal <handle
                             % have to be interpolated.
                             
                             try
-                                % include check to see if the timelines are
-                                % actually different....
-                                timeline=sort([signal(:,2,j); ref(:,2,j)]);
-
-                                this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}=interp1(signal(:,2,j), signal(:,1,j), timeline);
-                                this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}=interp1(ref(:,2,j), ref(:,1,j), timeline);
-
+                                timeline = signal(:,2,j);
+                                this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1} = signal(:,1,j);
+                                this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1} = interp1(ref(:,2,j), ref(:,1,j), timeline);
+                                
                                 % deal with NaN value at end and beginning
                                 % because of interpolation
-                                this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}(1) = this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}(2);
                                 this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}(1) = this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}(2);
-                                this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}(end) = this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}(end-1);
                                 this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}(end) = this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}(end-1);
                                 
-                                disp('Datapoints for signal and reference interpolated to allign traces')
+                                disp('Datapoins for the reference interpolated to allign traces')
+                                
+                                % Setting the framerate (The raw framerate
+                                % is for two channels) this is the
+                                % effective framerate
+                                this_FIP_signal.info.framerate = framerate/2; % Should include error handeling for when not available
+                        
                             catch
                                 disp('Importing single-channel recording.')
                                 input=questdlg(['Would you like to detrend signal ' num2str(j) '?'],'Detrend?','yes','no','no');
                                 timeline=signal(:,2,j);
                                 if strcmp(input,'yes')
                                     try
-                                        this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}=msbackadj(timeline,signal(:,1,j),'Showplot',1);
+                                        
+                                        %%%%%
+                                        % TO DO!!! Should be more dynamic
+                                        %%%%%
+                                        
+                                        
+                                        temp_smooth_factor = 1000;
+                                        %this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}=msbackadj(timeline,signal(:,1,j),...
+                                        %    'Showplot',1)
+                                        m_signal =  this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1};
+                                        m_smooth = smooth(this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}, temp_smooth_factor);
+                                        
+                                        % Present the smoothed background
+                                        figure
+                                        plot(m_signal);
+                                        hold on
+                                        plot(m_smooth);
+                                        xlabel('Time (s)'); ylabel('Signal Units');
+                             
+                                        this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1} = m_signal - m_smooth + mean(m_signal);
                                     catch
                                         warning('Detrending requires bioinformatix toolbox. Signal is not detrended.')
                                         this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}=signal(:,1,j);
@@ -199,15 +244,19 @@ classdef FIP_signal <handle
                                 else
                                     this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}=signal(:,1,j);
                                 end
+                                
+                                % No reference signal in this case, so NaN
                                 this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}=NaN;
+                                
+                                % Set the effective framerate
+                                this_FIP_signal.info.framerate = framerate;
                             end
 
                             % include timeline and count signals
                             this_FIP_signal.raw_data.timeline{this_FIP_signal.np_signals+1}=timeline;
                             this_FIP_signal.np_signals=this_FIP_signal.np_signals+1; 
                         end
-                        this_FIP_signal.info.framerate=framerate; % Should include error handeling for when not available
-                        
+                       
                     case 'labels'
                         for j=1:length(labels)
                             this_FIP_signal.info.names{j}=labels{j};
@@ -231,7 +280,12 @@ classdef FIP_signal <handle
                 if length(files(i).name)>length(filename) && strcmp(files(i).name(1:end-10),filename(1:end-4))
                     if length(files(i).name)>8 && strcmp(files(i).name(end-8:end),'logAI.csv')
                         % found a logAI file, check if not to big!
-                        logAI=csvread([path files(i).name]);
+                        try
+                            logAI=csvread([path files(i).name]);
+                        catch
+                            warning('logAI file corrupted? Will try to import first 10^6 rows')
+                            logAI=csvread([path files(i).name],0,0,[0 0 1000000 8]);
+                        end
                         disp(['Loaded ' files(i).name])
                         logAI=logAI(:,max(logAI)>1); %only import channels with signal >1mV
                         this_FIP_signal.raw_data.logAI=logAI;
@@ -250,9 +304,9 @@ classdef FIP_signal <handle
             
             % Populate object info (Note: of the raw data!)
             for i=1:this_FIP_signal.np_signals
-                this_FIP_signal.info.signal_units{i,1}='F';    %for signals    
-                this_FIP_signal.info.signal_units{i,2}='deltaF/F'; %for data
-                this_FIP_signal.info.max_time(i)=length(this_FIP_signal.raw_data.sig{i}(1:end-1))/this_FIP_signal.info.framerate;
+                this_FIP_signal.info.signal_units{i,1} = 'F';    %for signals    
+                this_FIP_signal.info.signal_units{i,2} = 'deltaF/F'; %for data
+                this_FIP_signal.info.max_time(i) = this_FIP_signal.raw_data.timeline{i}(end);
             end
             
             % Populate settings
@@ -540,7 +594,8 @@ classdef FIP_signal <handle
             
             % Error handeling regarding the input stamps
             if isempty(stamps) % no stamps
-                error('There are no numeric stamps in this array.')
+                disp('There are no numeric stamps in this array.')
+                return
             end
             
             % Find out how many timestamps arrays there allready are
@@ -596,6 +651,9 @@ classdef FIP_signal <handle
                 input={input};
             end
             
+            % THIS IS STUPID
+            %window = 5;
+            
             % Basic variables
             number_of_events=length(stamps);
             original_window=window;
@@ -639,7 +697,7 @@ classdef FIP_signal <handle
                 % from one fiber is missing. This is an error that should
                 % be worked on later.
                 % Another reason this could fail is when the channels are
-                % recorded at a different frame rate.
+                % recorded at a different framerate.
                 
                 if i==1 %Make results.
                     % The reason this happens inside the for loop is that
@@ -663,13 +721,137 @@ classdef FIP_signal <handle
                 end
             end
             
+            % Make the sweepset object
             PE_plot=sweepset('other data',results);
+        end
+        
+        function [plot_handle, results] = peri_event_plot_stamps(~, input, stamps, window)
+            % PERI_EVENT_PLOT_STAMPS is similar to peri_event_plot, but
+            % instead of FIP data it present a peri-event plot of events
+            % stamps. The stamps that will be used as the '0' timepoint are
+            % in the variable 'stamps' (1D) while input has one or more cells
+            % each containing a 1D array of timestamps that should be
+            % plotted. Different cells will be plotted in different colors
+            % and will be in the 3rd dimension in the results output.
+            %
+            % For now the results are also in 50 bins, the binsize is
+            % dynamic
+            %
+            % Results is organized as follows: (trials, time bins, data
+            % sets); There is a TIMELINE in the top row!
+            
+            % Error handeling
+            %       TO DO...
+            
+            
+            % Colorlist for the markers
+            colorlist = ['b', 'r', 'g', 'k', 'm', 'y'];
+            
+            % Check if input is a cell array and if not, put the 1D array
+            % in a cell anyway.
+            if ~iscell(input)
+                input={input};
+            end
+            
+            % For stamps it's the other way around
+            if iscell(stamps)
+                stamps=stamps{1}; % should be only 1
+            end
+            
+            % Figure out an appropriate bin size for the histogram
+            bin_size = 2*window/50;
+            timeline = round([-window:bin_size:window-bin_size]+0.5*bin_size,2);
+            
+            % Make the figure
+            plot_handle = figure;
+            subplot(2,1,1)
+            
+            % Make an empty results variable
+            results = zeros(length(stamps) + 1, 50, length(input));
+            
+            % for every dataset
+            for i = 1:length(input)
+                
+                % Add the timeline in the first row of the results
+                results(1,:,i) = timeline;
+                
+                % for every trial
+                % Start at row 2 because timeline in row 1
+                for j = 2:length(stamps) + 1
+                    
+                    % Substract the trial from the input data to get the
+                    % difference
+                    temp_data = input{i} - stamps(j-1);
+                    
+                    
+                    % for every bin
+                    for k = 1:length(timeline)
+                        
+                        % Collect results
+                        % note the biger-or-equal on one side, vs smaller
+                        % on the other side
+                        results(j,k,i) = sum(temp_data>=timeline(k)-0.5*bin_size & temp_data<timeline(k)+0.5*bin_size);
+
+                    end
+                    
+                                            
+                    % Plot the events
+                    super_temp = temp_data(temp_data>= -window & temp_data< window);
+                    plot(super_temp,ones(length(super_temp),1)*j,'.',...
+                        'MarkerEdgeColor',colorlist(i));
+                    hold on
+
+                end
+            end
+            
+            % Axis labeling etc.
+            xlabel('Time (s)')
+            ylabel('Trial #')
+            set(gca,'Ydir','reverse')
+            xlim([-window, window])
+            
+            
+            % Plot the histogram below
+            subplot(2,1,2)
+            results(2:end,:,:)=results(2:end,:,:)./bin_size;
+            for i = 1:length(input)
+                temp_results = results(2:end,:,i);
+                sem_results=std(temp_results)./sqrt(length(stamps));
+                fill([timeline';flipud(timeline')],[mean(temp_results)'-sem_results';flipud(mean(temp_results)'+sem_results')],[0 0 1],...
+                    'linestyle','none',...
+                    'FaceAlpha',0.1,...
+                    'FaceColor',colorlist(i));
+                hold on
+                plot(timeline, mean(temp_results),'Color',colorlist(i)')
+            end
+            
+            % Axis labeling etc.
+            xlabel('Time (s)')
+            ylabel('Events / s')
         end
         
         function cut(this_FIP_signal,signal,interval)
             % Will add a to-be-cut interval to settings.crop_info
             
+            % Beta warning
             warning('Cut data is in beta and might not always work properly')
+            
+            % Error handling on inputs
+            if nargin~=3 || ischar(signal)
+                disp(' ')
+                disp('###')
+                disp('This method will crop the signal, please use the following input arguments')
+                disp('signal:   The signal # that should be cut')
+                disp('interval: The interval [start stop] that should be cut out.')
+                disp(' ')
+                disp('For instance:')
+                disp('>> signal.cut(1,[100 250]);')
+                disp('This will cut the interval between 100s and 250s from signal 1.')
+                disp('###')
+                disp(' ')
+                
+                return
+            end
             
             % Error handling on interval
             if length(interval)~=2
@@ -712,23 +894,6 @@ classdef FIP_signal <handle
             this_FIP_signal.raw_data.logAI(start_index:end_index,signal_nr+1)=replacement;
             
             this_FIP_signal.update_plots;
-        end
-        
-        function output = apply_crop(this_FIP_signal, input, signal_number)
-            % Will cut data out of FIP_signal (for instance because of
-            % movement artifacts
-            
-            cuttings=this_FIP_signal.settings.crop_info{signal_number};
-            
-            for i=1:2:length(cuttings)
-                [~, start_index]=min(abs(cuttings(i)-input(:,2)));
-                [~, stop_index]=min(abs(cuttings(i+1)-input(:,2)));
-                
-                input=[input(1:start_index,:);...
-                    input(stop_index:end,:)];
-            end
-            
-            output = input;
         end
         
         function show_calibration(this_FIP_signal)
@@ -919,7 +1084,11 @@ classdef FIP_signal <handle
                 
                 % Check if 405nm refference signal available
                 if isnan(this_FIP_signal.raw_data.ref{i})
-                    sig_405{i}=zeros(1,2);
+                    sig_405{i}=zeros(1,2); %no refference signal
+                    sig_405{i}(1)=this_FIP_signal.raw_data.sig{i}(1,1);
+                    % This last line is so that sig_405 can still be ploted
+                    % (saves a lot of trouble in other methods) without
+                    % changing the scaling of the figure.
                     continue
                 end
                 
@@ -966,7 +1135,8 @@ classdef FIP_signal <handle
                 % Ajust time based on offset
                 sig_405{i}(:,2)=sig_405{i}(:,2)-this_FIP_signal.settings.time_offset;
                 
-                % Apply any croppings (note: fit using original data...)
+                % Apply any croppings (note: fit using original (uncropped)
+                % data...)
                 sig_405{i}=this_FIP_signal.apply_crop(sig_405{i},i);
             end            
         end
@@ -987,6 +1157,9 @@ classdef FIP_signal <handle
                         % Standard F = mean of whole signal
                         % However, later there will be an option to use a
                         % different mean.
+                        if mean(signal_norm(:,1))<0
+                            warning('The signal mean (F) is <0 which will flip the ''normalized'' signal.')
+                        end
                         data{i}(:,1)=(signal_norm(:,1)-mean(signal_norm(:,1)))./mean(signal_norm(:,1));
                     case 'F'
                         % Present F, which is the movement and
@@ -1247,6 +1420,7 @@ classdef FIP_signal <handle
                 'XData',[m_c_time m_c_time],...
                 'YData',[temp(1) temp(2)]);
         end
+        
     end
     
 %%%%%%%%%%%%%%%%%%%%%% Callbacks & other functions %%%%%%%%%%%%%%%%%%%%%%%%
@@ -1421,8 +1595,16 @@ classdef FIP_signal <handle
                 'Label','derive timestamps',...
                 'Tag','times_stamps',...
                 'Callback',@this_FIP_signal.context_menu)
+             uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
+                'Label','peri-event plot 1sec',...
+                'Tag','times_stamps',...
+                'Callback',@this_FIP_signal.context_menu)
             uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
-                'Label','peri-event plot',...
+                'Label','peri-event plot 5sec',...
+                'Tag','times_stamps',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
+                'Label','peri-event plot 10sec',...
                 'Tag','times_stamps',...
                 'Callback',@this_FIP_signal.context_menu)
             temp_menu=uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
@@ -1595,18 +1777,18 @@ classdef FIP_signal <handle
                 case 'derive timestamps advanced'
                     % Derive timestamps from input
                     tag=this_FIP_signal.r_mouse_scr.Tag;
-                    input=inputdlg({'minimum stamp interval (s): ', 'maximujm stamp interval (s): ', 'rising edge (y/n): (s)'});
-                    if strcmp(input{3},'y')
+                    input=inputdlg({'minimum stamp interval (s): ', 'maximujm stamp interval (s): ', 'rising edge (y/n): ', 'name: '});
+                    if strcmp(input{3},'y') || strcmp(input{3},'yes')
                         rising = true;
                     else
                         rising = false;
                     end
                     stamps=this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr,...
                         str2num(input{1}), str2num(input{2}), rising);
-                    name=[tag '_derived'];
+                    name=input{4};
                     % Store them in the FIP_signal object and name them
                     this_FIP_signal.import_timestamps(stamps,name);
-                case 'peri-event plot'
+                case {'peri-event plot 1sec', 'peri-event plot 5sec', 'peri-event plot 10sec'}
                     % Make peri-event data based on scr
                     tag=this_FIP_signal.r_mouse_scr.Tag;
                     if strcmp(tag(1:4),'stam') %User clicked on stamps
@@ -1644,7 +1826,13 @@ classdef FIP_signal <handle
                         s_units=this_FIP_signal.settings.signal_units{nr,2};
                     end 
                     % Plot using this data
-                    m_window=10; %Will work on changing this later
+                    if strcmp(scr.Label,'peri-event plot 1sec')
+                        m_window = 1;
+                    elseif strcmp(scr.Label,'peri-event plot 5sec')
+                        m_window = 5;
+                    else
+                        m_window = 10;
+                    end
                     test=this_FIP_signal.peri_event_plot(m_data,stamps,m_window);
                     %Set proper y axis and name bar
                     test.clamp_type=s_units; %see above)
@@ -1895,11 +2083,40 @@ classdef FIP_signal <handle
                     disp('Function currently not suported')
             end  
         end
+        
+        function output = apply_crop(this_FIP_signal, input, signal_number)
+            % Will cut data out of FIP_signal (for instance because of
+            % movement artifacts). It is always called by the CD and 405nm
+            % getter functions.
+            
+            cuttings = this_FIP_signal.settings.crop_info{signal_number};
+            
+            for i=1:2:length(cuttings)
+                [~, start_index]=min(abs(cuttings(i)-input(:,2)));
+                [~, stop_index]=min(abs(cuttings(i+1)-input(:,2)));
+                
+                if start_index~=1 && stop_index~=length(input)
+                    input=[input(1:start_index,:);...
+                        input(stop_index:end,:)];
+                elseif start_index==1
+                    input = input(stop_index:end,:);
+                else
+                    input = input(1:start_index,:);
+                end
+                    
+            end
+            
+            output = input;
+        end
+        
     end
     
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Events %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
     events
+        
        state_change         % fires at every change (triggerd by update_plots)
+       
     end
     
 end

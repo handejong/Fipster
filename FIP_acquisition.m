@@ -13,6 +13,7 @@ classdef FIP_acquisition < handle
     %   Currently supported cameras:
     %       - Photometrics Prime (note: Matlab adapter in Bèta)
     %       - Macvideo facetime camera
+    %       - FLIR cameras using Pointgrey adapter (only Flycapture)
     %
     %   FIP_acquisition is part of FIPster. FIPster is made by Johannes de
     %   Jong, j.w.dejong@berkeley.edu
@@ -23,6 +24,7 @@ classdef FIP_acquisition < handle
         cam_settings    % Struct with camera settings and video source object
         daq_settings    % Struct with DAQ info and session
         aq_settings     % Struct with acquisition settings
+        arduino_settings% Struct with arduino_settings
         plt_settings    % Struct with plot settings
         handles         % Mostly plot handles
         notes           % Cell struct with notes taken during recordings
@@ -66,6 +68,14 @@ classdef FIP_acquisition < handle
             obj.daq_settings.ports.sig = 2;
             obj.daq_settings.ports.ref = 1;
             
+            % Populate Arduino settings
+            obj.arduino_settings.port = 'COM3';
+            try
+                obj.arduino_settings.serial = serial(obj.arduino_settings.port);
+            catch
+                disp('No Arduino detected, if you intend to use one, chanege the port under arduino_settings.')
+            end
+            
             % Populate acquisition settings
             obj.aq_settings.calibrated = false;
             obj.aq_settings.rate = rate;
@@ -77,7 +87,7 @@ classdef FIP_acquisition < handle
             
             % Populate plot settings
             obj.plt_settings.lookback=  lookback;
-            obj.plt_settings.type = '.';
+            obj.plt_settings.type = '-';
             obj.plt_settings.smooth = 1;
             obj.plt_settings.live_feed = false; 
             
@@ -106,10 +116,39 @@ classdef FIP_acquisition < handle
                 obj.daq_setup;
             end
             
+            % if neccesary setup arduino
+            if strcmp(obj.cam_settings.trigger_type, 'arduino')
+                obj.arduino_setup;
+            end
+            
             % Where we will store calibration frames
             frames = zeros(res(2), res(1), n_frames);
             
-            if ~strcmp(obj.cam_settings.trigger_type,'daq')
+            % Start whatever generates the pulses (DAQ, Arduino or none)
+            if strcmp(obj.cam_settings.trigger_type,'daq') %DAQ
+                start(obj.cam_settings.vid);
+                startBackground(obj.daq_settings.session);
+                i=0;
+                while i < n_frames
+                    i = i + 1;
+                    frames(:,:,i) = getdata(obj.cam_settings.vid, 1, 'uint16');
+                end
+                stop(obj.cam_settings.vid);
+                stop(obj.daq_settings.session);
+                
+            elseif strcmp(obj.cam_settings.trigger_type, 'arduino') %Arduino
+                start(obj.cam_settings.vid);
+                obj.arduino_toggle();
+                i = 0;
+                while i < n_frames
+                    i = i + 1;
+                    frames(:,:,i) = getdata(obj.cam_settings.vid, 1, 'uint16');
+                end
+                stop(obj.cam_settings.vid);
+                obj.arduino_toggle(); %Start stop Arduino
+                fclose(obj.arduino_settings.serial);
+                
+            else % No external trigger, just internal
                 start(obj.cam_settings.vid);
                 pause(1)
                 i=0;
@@ -119,17 +158,7 @@ classdef FIP_acquisition < handle
                     while(islogging(obj.cam_settings.vid)); end
                     frames(:,:,i) = getdata(obj.cam_settings.vid, 1, 'uint16');
                 end
-                stop(obj.cam_settings.vid);
-            else
-                start(obj.cam_settings.vid);
-                startBackground(obj.daq_settings.session);
-                i=0;
-                while i < n_frames
-                    i = i + 1;
-                    frames(:,:,i) = getdata(obj.cam_settings.vid, 1, 'uint16');
-                end
-                stop(obj.cam_settings.vid);
-                stop(obj.daq_settings.session);   
+                stop(obj.cam_settings.vid);     
             end
             
             % Make the four frames into one calibframe
@@ -157,6 +186,10 @@ classdef FIP_acquisition < handle
             i=length(Y)+1; temp=0;
             while temp==0; i=i-1; temp=Y(i); end; ROI(4)=(i+1)-ROI(2);
             obj.cam_settings.vid.ROIPosition=ROI;
+            
+            % Some cameras will only allow ajusting the ROI by certain
+            % intervals. So whe have to check what was actually done.
+            ROI = obj.cam_settings.vid.ROIPosition;
             
             % Update the masks themselves
             obj.aq_settings.masks=logical(obj.aq_settings.masks(ROI(2):ROI(2)+ROI(4)-1,ROI(1):ROI(1)+ROI(3)-1,:));
@@ -216,9 +249,14 @@ classdef FIP_acquisition < handle
             if obj.plt_settings.live_feed
                 figure
                 live_feed = imagesc(max(double(obj.aq_settings.masks),[],3));
-                caxis([200 250])
+                caxis([50 150])
+                colormap gray
             end
             
+            % Make a variable were we can put a 'baseline' frame, collected
+            % around frame 100, which is used for the life plot and maybe
+            % other corrections in the future.
+            baseline_frame = uint16(zeros(size(obj.aq_settings.masks(:,:,1))));
             
             % Make a figure for the stop button and notepad
             stop_figure = figure('Menubar','none',...
@@ -251,14 +289,33 @@ classdef FIP_acquisition < handle
                 'String',obj.notes);
             
             
-            % Start the camera and daq depending on the camera type
+            % Start the camera
             obj.camera_setup();
             start(obj.cam_settings.vid);
-            if strcmp(obj.cam_settings.trigger_type, 'daq')
+            
+            % Start the daq if used as a camera trigger and/or for
+            % collection of analogue input data
+            if strcmp(obj.cam_settings.trigger_type, 'daq') || obj.aq_settings.acquire_AI
                 obj.daq_setup();
-                startBackground(obj.daq_settings.session)
+                prepare(obj.daq_settings.session); %Reduces start latency
             end
             
+            
+            % Start the arduino if used as a camera trigger
+            if strcmp(obj.cam_settings.trigger_type, 'arduino')
+                obj.arduino_setup();
+                obj.arduino_toggle();
+            end
+            
+            
+            % And start the DAQ at the very last moment. If using both an
+            % Arduino and a DAQ they are manually aligned in the Arduino
+            % code, there is no trigger. That's not ideal. Should probably
+            % also split one of the FIP trigger (LED or camera) into the
+            % DAQ to see if your trigger pulses make sense.
+            if strcmp(obj.cam_settings.trigger_type, 'daq') || obj.aq_settings.acquire_AI
+                startBackground(obj.daq_settings.session)
+            end
             
             %%%%%%%%%%%%%%%%%%%%%% Acquisition loop %%%%%%%%%%%%%%%%%%%%%%%
             should_be_time = 0;
@@ -266,14 +323,13 @@ classdef FIP_acquisition < handle
             error_counter=0;
             analysis_time_timer = tic; % only the first time
             while(stop_button.Value == 0)
-                
-                
+              
                 % Frame number and expected time
                 n_frame = n_frame+1;
                 should_be_time = should_be_time + 1 / obj.aq_settings.rate;
                 
                 % Exponentially increase the size of the signal and ref
-                % variables
+                % variables.
                 if n_frame>length(signal)
                     signal = [signal; zeros(size(signal))];
                     ref=[ref; zeros(size(ref))];
@@ -299,7 +355,13 @@ classdef FIP_acquisition < handle
                             disp('No frames available in camera memory.')
                             stop_button.Value = 1;
                         end
-
+                    case 'arduino'
+                        try
+                            [img, time, metadata] = getdata(obj.cam_settings.vid,1,'uint16');
+                        catch
+                            disp('No frames available in camera memory.')
+                            stop_button.Value = 1;
+                        end
                     otherwise
                         error('Incompatible trigger type.')
                 end
@@ -322,6 +384,11 @@ classdef FIP_acquisition < handle
                     warning('Camera and acquisition seem to disagree on frame number')
                 end
                 
+                % This could be the baseline frame
+                if n_frame == 100
+                    baseline_frame = img - 100;
+                end
+                
                 % Segment the individual fibers out
                 for j = 1:obj.aq_settings.fibers
                     data(j) = mean(img(obj.aq_settings.masks(:,:,j)));
@@ -339,7 +406,21 @@ classdef FIP_acquisition < handle
                 
                 % Update live feed (if requested)
                 if obj.plt_settings.live_feed && mod(n_frame,obj.aq_settings.channels) == 0
-                    live_feed.CData=img;
+                    live_feed.CData=img - baseline_frame;
+                    
+                    % If it's frame 100, callibrate as well
+                    if n_frame==100
+                        min_value = min(min(live_feed.CData))-20;
+                        max_value = max(max(live_feed.CData))+20;
+                        figure(live_feed.Parent.Parent)
+                        caxis([min_value max_value]);
+                    end
+                    
+                end
+                
+                % Check if the Arduino (is used) has anything to say
+                if strcmp(obj.cam_settings.trigger_type, 'arduino') && obj.arduino_settings.serial.BytesAvailable>0
+                    fgets(obj.arduino_settings.serial)
                 end
                 
                 % Save data with raw timestamps in a .csv for backup
@@ -399,7 +480,14 @@ classdef FIP_acquisition < handle
             stop(obj.cam_settings.vid);
             
             % If neccesary, stop the DAQ
-            if strcmp(obj.cam_settings.trigger_type,'daq')
+            if strcmp(obj.cam_settings.trigger_type,'daq') || obj.aq_settings.acquire_AI
+                stop(obj.daq_settings.session)
+            end
+            
+            % If neccesary, stop the arduino and close serial connection
+            if strcmp(obj.cam_settings.trigger_type,'arduino')
+                obj.arduino_toggle();
+                fclose(obj.arduino_settings.serial);
                 stop(obj.daq_settings.session)
             end
             
@@ -421,17 +509,17 @@ classdef FIP_acquisition < handle
             % The start times are 0.5*interval and 1.5 * interval, because the
             % first trigger is at 0, but the first readout is at
             % T = exposure.
-            if strcmp(obj.cam_settings.trigger_type,'daq')
+            if strcmp(obj.cam_settings.trigger_type,'daq') || strcmp(obj.cam_settings.trigger_type,'arduino')
                 interval=(1/obj.aq_settings.rate)*obj.aq_settings.channels;
                 if obj.aq_settings.channels == 2; signal_start=0.75 * interval; end
                 if obj.aq_settings.channels == 1; signal_start = 0.5 * interval; end
-                ref_start=0.25 * interval;
+                ref_start=0.25 * interval; % Because if there is a ref, there are 2 channels...
 
                 for i=1:obj.aq_settings.fibers
                     signal(:,2,i)=[signal_start:interval:length(signal)*interval];
                     ref(:,2,i)=[ref_start:interval:length(ref)*interval];
                 end
-                disp('Exact timestamps using daq timer.')
+                disp('Exact timestamps using DAQ/Arduino timer.')
             end
             
             % NOTE: the backup data (saved as .csv if requested) contains
@@ -540,6 +628,8 @@ classdef FIP_acquisition < handle
                     supported = true;
                 case 'pmimaq'
                     supported = true;
+                case 'pointgrey'
+                    supported = true;
                 otherwise
                     supported = false;
             end
@@ -571,19 +661,49 @@ classdef FIP_acquisition < handle
                 obj.cam_settings.vid = vid;
                 obj.cam_settings.src = src;
                 disp(['Setting up ' option.devices])
+                disp(['Please run calibration before acquisition.'])
             end
+
             
             
             % Figure out the correct settings for supported cameras
             switch option.adaptors
                 case 'macvideo'
                     % Setup for Apple Facetime cam
-                    obj.cam_settings.trigger_type='internal';
+                    obj.cam_settings.trigger_type = 'internal';
                     triggerconfig(obj.cam_settings.vid, 'Manual')
                     obj.cam_settings.vid.TriggerRepeat = Inf;
                     obj.cam_settings.vid.FramesPerTrigger=1;
                     obj.cam_settings.vid.ReturnedColorspace = 'grayscale';
                     
+                case 'pointgrey'
+                    % Setup for a point grey camera
+                    obj.cam_settings.trigger_type = 'arduino'; %could be DAQ
+                    triggerconfig(obj.cam_settings.vid,...
+                    'hardware',...
+                    'risingEdge',...
+                    'externalTriggerMode0-Source0');
+                    obj.cam_settings.vid.TriggerRepeat = Inf;
+                    obj.cam_settings.vid.FramesPerTrigger = 1;
+                    
+                    % Exposure settings
+                    obj.cam_settings.src.FrameRate = obj.aq_settings.rate;
+                    obj.cam_settings.src.FrameRateMode = 'Off';
+                    obj.cam_settings.src.ExposureMode = 'off'; % <- target grey value
+                    obj.cam_settings.src.ShutterMode = 'Auto';
+                    obj.cam_settings.src.Shutter = min((1000/obj.aq_settings.rate) - obj.aq_settings.exposure_gap, 52); %52 is the maximum exposure time on the Blackfly
+                    obj.cam_settings.src.ShutterMode = 'Manual';
+                    
+                    disp(['Exposure set to: ' num2str(obj.cam_settings.src.Shutter) 'ms']);
+                    
+                    % Some more settings
+                    obj.cam_settings.src.FrameRateMode = 'Off';
+                    obj.cam_settings.src.GainMode = 'Manual';
+                    obj.cam_settings.src.Gain = 0;
+                    obj.cam_settings.src.SharpnessMode = 'Off';
+                    obj.cam_settings.src.GammaMode = 'Off';
+                    
+
                 case 'pmimaq'
                     % Setup for Photometrics Prime;
                     obj.cam_settings.vid.FramesPerTrigger = 1; 
@@ -622,6 +742,8 @@ classdef FIP_acquisition < handle
         function daq_setup(obj)
             %DAQ_SETUP sets upt the daq according to the settings
             
+            % TODO error handeling when there is no DAQ available
+            
             % Get device from object
             device = obj.daq_settings.devices(obj.daq_settings.in_use);
             
@@ -635,38 +757,45 @@ classdef FIP_acquisition < handle
             s = daq.createSession('ni');
             s.Rate = obj.daq_settings.fs;
             s.IsContinuous = true;
-            
-            % Setting up the camera triggers
-            camCh = s.addCounterOutputChannel(device.ID, cam_port, 'PulseGeneration');
-            camCh.Frequency = rate;
-            camCh.InitialDelay = 0;
-            camCh.DutyCycle = 0.1;
-            disp(['Camera should be connected to ' camCh.Terminal]);
+  
             
             % Setting up the LED triggers (1 or 2 LEDs)
-            switch obj.aq_settings.channels
-                case 1
-                    sigCh = s.addCounterOutputChannel(device.ID, sig_port, 'PulseGeneration');
-                    sigCh.Frequency = rate;
-                    sigCh.InitialDelay = 0;
-                    sigCh.DutyCycle = 0.95;
-                    disp(['Signal LED should be connected to ' sigCh.Terminal]);
-                    
-                case 2
-                    refCh = s.addCounterOutputChannel(device.ID, ref_port, 'PulseGeneration');
-                    refCh.Frequency = rate / 2;
-                    refCh.InitialDelay = 1 / rate * 0.05;
-                    refCh.DutyCycle  = 0.45;
-                    disp(['Reference LED should be connected to ' refCh.Terminal]);
-
-                    sigCh = s.addCounterOutputChannel(device.ID, sig_port, 'PulseGeneration');
-                    sigCh.Frequency = rate / 2;
-                    sigCh.InitialDelay = 1 / rate * 1.05;
-                    sigCh.DutyCycle = 0.45;
-                    disp(['Signal LED should be connected to ' sigCh.Terminal]);
+            try %This only works on certain DAQs
                 
-                otherwise
-                    error('Currently only setup for 1 and 2 channel recordings.')
+                % Setting up the camera triggers
+                camCh = s.addCounterOutputChannel(device.ID, cam_port, 'PulseGeneration');
+                camCh.Frequency = rate;
+                camCh.InitialDelay = 0;
+                camCh.DutyCycle = 0.1;
+                disp(['Camera should be connected to ' camCh.Terminal]);
+                
+                % Setting up LED triggers
+                switch obj.aq_settings.channels
+                    case 1
+                        sigCh = s.addCounterOutputChannel(device.ID, sig_port, 'PulseGeneration');
+                        sigCh.Frequency = rate;
+                        sigCh.InitialDelay = 0;
+                        sigCh.DutyCycle = 0.95;
+                        disp(['Signal LED should be connected to ' sigCh.Terminal]);
+
+                    case 2
+                        refCh = s.addCounterOutputChannel(device.ID, ref_port, 'PulseGeneration');
+                        refCh.Frequency = rate / 2;
+                        refCh.InitialDelay = 1 / rate * 0.05;
+                        refCh.DutyCycle  = 0.45;
+                        disp(['Reference LED should be connected to ' refCh.Terminal]);
+
+                        sigCh = s.addCounterOutputChannel(device.ID, sig_port, 'PulseGeneration');
+                        sigCh.Frequency = rate / 2;
+                        sigCh.InitialDelay = 1 / rate * 1.05;
+                        sigCh.DutyCycle = 0.45;
+                        disp(['Signal LED should be connected to ' sigCh.Terminal]);
+
+                    otherwise
+                        error('Currently only setup for 1 and 2 channel recordings.')
+                end
+            catch
+                warning('This DAQ can not be used for camera or LED triggering, but AI data is recorded.')
             end
             
             % Enabling analog input (AI) logging if this is turned on
@@ -679,7 +808,29 @@ classdef FIP_acquisition < handle
             end
             
             % Store the session in the FIP_acquisition object
-            obj.daq_settings.session=s;
+            obj.daq_settings.session = s;
+        end
+        
+        function arduino_setup(obj)
+            % Sets up the arduino
+            
+            % The serrial connection
+            
+            % Open serial connection
+            s = obj.arduino_settings.serial;
+            fopen(s);
+            pause(1);
+            
+            % Check if proper program running...
+            
+%             % Set tech delay
+%             t_delay = obj.aq_settings.exposure_gap;
+%             fwrite(s,3); fwrite(s,t_delay); fgets(s) %3 is the tech delay noun
+            
+            % Set framerate
+            rate=obj.aq_settings.rate;
+            fwrite(s,2); fwrite(s,rate); fgets(s) %2 is the framerate noun       
+            
         end
         
         function logAIData(obj, src, ev, logAIFile)
@@ -687,6 +838,21 @@ classdef FIP_acquisition < handle
             
             dlmwrite(logAIFile,[ev.TimeStamps ev.Data],'delimiter',',','-append');
             
+        end
+        
+        function arduino_toggle(obj)
+            % Will turn on and off arduino sampling
+            
+            s = obj.arduino_settings.serial;
+            
+            % Check if serial is properly working
+            if s.bytesavailable>0
+                error('Serial connection error')
+            end
+            
+            % 9 is Acquisition, 1 is empty verb or stop if running
+            fwrite(s,9); fwrite(s,1); fgets(s)
+
         end
         
         function uncloseable(varargin)
