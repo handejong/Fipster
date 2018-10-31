@@ -109,7 +109,7 @@ classdef FIP_signal <handle
                             if data_loaded
                                 error('Please choose only one method to import data, either User input, Filename or individual variables')
                             end
-                            [filename, path]=uigetfile({'*.mat'},'select file','MultiSelect','off');
+                            [filename, path]=uigetfile({'*.mat; *.csv'},'select file','MultiSelect','off');
                             
                             % If the user presses cancel
                             if filename==0
@@ -162,12 +162,39 @@ classdef FIP_signal <handle
             % Will load a .mat file into the FIP_signal object
             this_FIP_signal.np_signals=0;
             
-            if ~strcmp(filename(end-3:end),'.mat')
-                error 'please submit a .mat file'
+            % Check the filetype
+            switch filename(end-3:end)
+                case '.mat' % it's a .mat file from FIPgui or FIP_aquisition
+                    load([path filename])
+                    
+                case '.csv' % it's a .csv file, probably from Neurophotometrics
+                    
+                    % This warning is there because I don't know how
+                    % multi-fiber recordings look in this format
+                    warning('Currently can only import two-channel one-fiber recordings from .csv files')
+                    input_file = fopen([path filename]);
+                    temp = textscan(input_file,'%f32%f32','Delimiter',' ','HeaderLines',0);
+                    fclose(input_file);
+                    clear('input_file')
+                    
+                    % Find framerate (for all the data, not per channel)
+                    framerate = round(length(temp{1})/((temp{1}(end-1)-temp{1}(1))/1000));
+                    
+                    % Extract the signal
+                    signal(:,1) = temp{2}(2:2:end);
+                    signal(:,2) = (temp{1}(2:2:end)-temp{1}(1))/1000;
+                    ref(:,1) = temp{2}(1:2:end);
+                    ref(:,2) = (temp{1}(1:2:end)-temp{1}(1))/1000;
+                    clear('temp');
+                    
+                    % Name the signal
+                    labels{1} = 'signal_1';
+                    
+                otherwise
+                    error('This filetype is currently not supported.')
             end
             
-            load([path filename])
-            
+            % Find all the imported variables
             variables=who;
             
             for i=1:length(variables)
@@ -265,7 +292,7 @@ classdef FIP_signal <handle
                     case 'notes'
                         this_FIP_signal.measurement_notes = notes;
                         
-                    case {'this_FIP_signal' 'filename' 'path' 'ref' 'framerate'}
+                    case {'this_FIP_signal' 'filename' 'path' 'ref' 'framerate' 'ans'}
                         % Good, but do nothing
                         all_good = true;
                         
@@ -463,7 +490,8 @@ classdef FIP_signal <handle
             
             % Slider for time control
             max_time=max(this_FIP_signal.info.max_time);
-            sliderstep=[1/max_time 10/max_time];
+            sliderstep=double([1/max_time 10/max_time]);
+            %sliderstep=[1 100];
             this_FIP_signal.handles.time_bar=...
                 uicontrol(this_FIP_signal.handles.main_figure,...
                 'Units','normalized',...
@@ -1130,6 +1158,20 @@ classdef FIP_signal <handle
                         sig_405{i}(:,2)=this_FIP_signal.raw_data.timeline{i};  
                     otherwise
                         warning('fit method unkown')
+                end
+                
+                % This is pretty bad, but if the polyfit functions produced
+                % a warning about a scaling issue we are going to supress
+                % that warning from now on. We'll even put out a note to
+                % the user about this, so it's not THAT bad. (The scaling
+                % issue is not a problem for what we use poly fit for, and
+                % if it was, it would be obvious from the data).
+                w = warning('query','last');
+                if ~isempty(w) && strcmp(w.identifier,'MATLAB:polyfit:RepeatedPointsOrRescale')
+                    warning('off','MATLAB:polyfit:RepeatedPointsOrRescale');
+                    disp(' ');
+                    warning('To prevent endless repetitions of the warning relating to the polyfit issue, this warning has been supressed. To turn it back on, type: >> warning(''on'',''MATLAB:polyfit:RepeatedPointsOrRescale'');.');
+                    disp(' ');
                 end
                 
                 % Ajust time based on offset
