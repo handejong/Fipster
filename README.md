@@ -3,7 +3,7 @@ Fipster is a set of Matlab scripts for quick analysis of fiber photometry (FIP) 
 
     >> signal = FIP_signal('User input');
 
-This will open a GUI where one can select a .mat file containing signal (Calcium depended, CD) and reference (405nm emission) traces. There are currently two supported formats. One is those exported by Fipgui (Deisseroth lab) the other is the .mat files exported by the FIP_aquisition class which is also part of this toolbox. If a LogAI file with the same name is found in the same folder, this file will be imported as well.
+This will open a GUI where one can select a .mat file containing signal (Calcium depended, CD) and reference (405nm emission) traces. There are currently two supported formats. One is that exported by Fipgui (Deisseroth lab) the other is the .mat files exported by the FIP_aquisition class which is also part of this toolbox. If a LogAI file with the same name is found in the same folder, this file will be imported as well.
 
 # Example work flow
 Fipster uses a GUI that should be relatively straightforward. The main component, 'FIP_signal' is a Matlab class and supports dot notation for access to non-private properties and methods. This is an example of a standard work flow to obtain time-locked (peri-event) plots of FIP signal.
@@ -29,7 +29,7 @@ Fipster uses a GUI that should be relatively straightforward. The main component
 
 	Note: timestamps are not automatically offset when a new time alignment is applied. So pay attention to the order in which step 3 and 4 are performed. If timestamps from multiple different sources are applied, it might be more efficient to offset them first before integration into FIP signal.
 
-5. Make peri event plot
+5. Make a peri-event plot
 	Right click on the normalized signal and click peri-event plot. Select the time stamps you want to use. This will open a new figure with every trial (sweep) displayed. Note that the event plot is also put in the workspace and that you have access to it's settings by clicking the object 'peri_event'. Additionally most settings are available via a context menu which appears by right-clicking the plot or individual sweeps.
 
 6. Finishing touch
