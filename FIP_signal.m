@@ -1,15 +1,16 @@
 classdef FIP_signal <handle
     %FIP_signal Imports fiber photometry signal into FIPster
-    %   FIP_signal takes either a .mat file or one or two variables as
-    %   input. It will attempt to contruct valid fiber photometry signals
+    %   FIP_signal takes either a .mat file or a .csv file as input (see
+    %   below). If the input files are recognized, it will present a GU
+    %   It will attempt to contruct valid fiber photometry signals
     %   from the input for multiple fibers. If one of the data channels is
     %   a signal collected after emission with 405nm light, it will use
     %   that signal to correct the other channel for movement artifacts.
     %
     %
     %   INPUT ARGUMENTS:
-    %       - 'Filename',filename       filename should refer to a .mat
-    %                                   file which will be imported.
+    %       - 'Filename',filename       filename should refer to a .mat or
+    %                                   a .csv file.
     %       - 'User input'              Will open a file browser window.
     %       - 'no figure'               The object is still created, but no
     %                                   figure. This is efficient for other
@@ -81,7 +82,7 @@ classdef FIP_signal <handle
             settings.smooth_405=1;
             settings.smooth_CD=1;
             settings.smooth_data=1;
-            settings.fit_405='polyfit_2';
+            settings.fit_405='polyfit 2';
             settings.sw_size=40; %(s) Sliding window size if used for 405 fit (Data points)
             this_FIP_signal.settings=settings;
             
@@ -159,8 +160,10 @@ classdef FIP_signal <handle
         end
         
         function load_file(this_FIP_signal, filename, path)
-            % Will load a .mat file into the FIP_signal object
-            this_FIP_signal.np_signals=0;
+            % Will load a .mat or .csv file into the FIP_signal object.
+            
+            % So far we have imported 0 signals.
+            this_FIP_signal.np_signals = 0;
             
             % Check the filetype
             switch filename(end-3:end)
@@ -194,8 +197,9 @@ classdef FIP_signal <handle
                     error('This filetype is currently not supported.')
             end
             
-            % Find all the imported variables
-            variables=who;
+            % Find all the imported variables (this is not good practice,
+            % but it totally works)
+            variables = who;
             
             for i=1:length(variables)
                 
@@ -303,29 +307,37 @@ classdef FIP_signal <handle
             
             % Do we find any associated files on the same path
             files=dir(path);
-            for i=1:length(files) 
-                if length(files(i).name)>length(filename) && strcmp(files(i).name(1:end-10),filename(1:end-4))
-                    if length(files(i).name)>8 && strcmp(files(i).name(end-8:end),'logAI.csv')
-                        % found a logAI file, check if not to big!
-                        try
-                            logAI=csvread([path files(i).name]);
-                        catch
-                            warning('logAI file corrupted? Will try to import first 10^6 rows')
-                            logAI=csvread([path files(i).name],0,0,[0 0 1000000 8]);
-                        end
-                        disp(['Loaded ' files(i).name])
-                        logAI=logAI(:,max(logAI)>1); %only import channels with signal >1mV
-                        this_FIP_signal.raw_data.logAI=logAI;
-                        dims=size(logAI);
-                        disp(['Loaded ' num2str(dims(2)) ' analog inputs.']);
-                        this_FIP_signal.log_AI_used=true(dims(2),1);
-                        this_FIP_signal.AI_plots=true;
+            for i=1:length(files)
+                
+                % Maybe a _logAI.csv file? Check if:
+                %   1. It's filename should be longer than the orginial
+                %   2. It's name minus _logAI.csv should be identical
+                %   3. It's last 10 characters should be _logAI.csv
+                if length(files(i).name)>length(filename) && strcmp(files(i).name(1:end-10),filename(1:end-4)) && strcmp(files(i).name(end-8:end),'logAI.csv')
+                    % found a logAI file, check if not to big!
+                    try
+                        logAI = csvread([path files(i).name]);
+                    catch
+                        warning('logAI file corrupted? Will try to import first 10^6 rows')
+                        logAI = csvread([path files(i).name],0,0,[0 0 1000000 8]);
                     end
-                    if length(files(i).name)>14 && strcmp(files(i).name(end-14:end),'calibration.jpg')
-                        % found a calibration picture
-                        this_FIP_signal.info.calibration=imread([path files(i).name]);
-                        disp(['Loaded ' files(i).name])
-                    end
+                    disp(['Loaded ' files(i).name])
+                    logAI = logAI(:,max(logAI)>1); %only import channels with signal >1mV
+                    this_FIP_signal.raw_data.logAI = logAI;
+                    dims = size(logAI);
+                    disp(['Loaded ' num2str(dims(2)) ' analog inputs.']);
+                    this_FIP_signal.log_AI_used = true(dims(2),1);
+                    this_FIP_signal.AI_plots = true;
+                end
+                
+                % Maybe a _calibration.jpg file? Check if:
+                %   1. It's filename should be longer than the orginial
+                %   2. It's name minus _calibration.jpg should be identical
+                %   3. It's last 16 characters should be _calibration
+                if length(files(i).name)>16 && strcmp(files(i).name(1:end-16),filename(1:end-4)) && strcmp(files(i).name(end-14:end),'calibration.jpg')
+                    % found a calibration picture
+                    this_FIP_signal.info.calibration = imread([path files(i).name]);
+                    disp(['Loaded ' files(i).name])
                 end
             end
             
@@ -337,9 +349,9 @@ classdef FIP_signal <handle
             end
             
             % Populate settings
-            m_settings=this_FIP_signal.settings;
-            m_settings.signal_units=this_FIP_signal.info.signal_units;
-            this_FIP_signal.settings=m_settings;
+            m_settings = this_FIP_signal.settings;
+            m_settings.signal_units = this_FIP_signal.info.signal_units;
+            this_FIP_signal.settings = m_settings;
         end
         
         function present_figure(this_FIP_signal)
@@ -391,22 +403,23 @@ classdef FIP_signal <handle
                     'UIContextMenu',this_FIP_signal.handles.drop_down.data,...
                     'Tag',['data.' num2str(i)]);
             end
+            
+            % Making the 'first' signal visible in raw data mode
             this_FIP_signal.c_signal=1;
             this_FIP_signal.handles.sig_CD{this_FIP_signal.c_signal}.Visible='on';
             this_FIP_signal.handles.sig_405{this_FIP_signal.c_signal}.Visible='on';
             this_FIP_signal.handles.ylabel=ylabel(this_FIP_signal.settings.signal_units{1,1});
             xlabel('Time (s)');
             
-            % Plotting the line indicating the current time
-            temp=ylim;
-            m_c_time=this_FIP_signal.c_time;
-            
+            % Plotting the vertical line indicating the current time
+            temp = ylim;
+            m_c_time = this_FIP_signal.c_time;
             this_FIP_signal.handles.c_time_line=line([m_c_time m_c_time],[temp(1) temp(2)],...
                 'LineStyle','--',...
                 'Color',[0.2 0.2 0.2],...
                 'Visible','off');
            
-            % logAI figure
+            % Make the logAI figure
             this_FIP_signal.handles.logAI_plot=subplot(...
                 'Position',[0.13 0.04 0.835 0.18],...
                 'Tag','logAI_plot',...
@@ -415,7 +428,6 @@ classdef FIP_signal <handle
             hold on
             
             % Plotting logAI signals if available
-            %if this_FIP_signal.
             if isfield(this_FIP_signal.raw_data,'logAI')
                 logAI_plot=this_FIP_signal.raw_data.logAI;
                 dims=size(logAI_plot);
@@ -491,7 +503,6 @@ classdef FIP_signal <handle
             % Slider for time control
             max_time=max(this_FIP_signal.info.max_time);
             sliderstep=double([1/max_time 10/max_time]);
-            %sliderstep=[1 100];
             this_FIP_signal.handles.time_bar=...
                 uicontrol(this_FIP_signal.handles.main_figure,...
                 'Units','normalized',...
@@ -530,17 +541,23 @@ classdef FIP_signal <handle
                 'Max', 100,...
                 'HorizontalAlignment','left',...
                 'String',this_FIP_signal.measurement_notes);
-                
             end
 
-            % Add listeners
-            this_FIP_signal.handles.listeners{1}=addlistener(this_FIP_signal,...
-                'settings','PostSet',@this_FIP_signal.update_plots);    
+            % Add listener for settings change
+            this_FIP_signal.handles.listeners{1} = addlistener(this_FIP_signal,...
+                'settings','PostSet',@this_FIP_signal.update_plots);
+            
+            % Add listener for time change
+            this_FIP_signal.handles.listeners{2} = addlistener(this_FIP_signal,...
+                'c_time','PostSet',@this_FIP_signal.set_time);
+            
+            % Set the correct time (and lock the xaxis)
+            this_FIP_signal.window='all time';
+            this_FIP_signal.set_time;
             
             % Wrapping up
             this_FIP_signal.figure_open=true;
-            this_FIP_signal.window='all time';
-            
+
             % Immediately deal with dependend variables
             this_FIP_signal.update_plots;
         end
@@ -1013,38 +1030,38 @@ classdef FIP_signal <handle
             % Collect the signal to be analyzed
             switch signal
                 case '405nm'
-                    [~, i_start]=min(abs(this_FIP_signal.sig_405{fiber}(:,2)-interval(1)));
-                    [~, i_end]=min(abs(this_FIP_signal.sig_405{fiber}(:,2)-interval(2)));
-                    Y=this_FIP_signal.sig_405{fiber}(i_start:i_end,:);
+                    [~, i_start] = min(abs(this_FIP_signal.sig_405{fiber}(:,2)-interval(1)));
+                    [~, i_end] = min(abs(this_FIP_signal.sig_405{fiber}(:,2)-interval(2)));
+                    Y = this_FIP_signal.sig_405{fiber}(i_start:i_end,:);
                 case 'CD'
-                    [~, i_start]=min(abs(this_FIP_signal.sig_CD{fiber}(:,2)-interval(1)));
-                    [~, i_end]=min(abs(this_FIP_signal.sig_CD{fiber}(:,2)-interval(2)));
-                    Y=this_FIP_signal.sig_CD{fiber}(i_start:i_end,:);
+                    [~, i_start] = min(abs(this_FIP_signal.sig_CD{fiber}(:,2)-interval(1)));
+                    [~, i_end] = min(abs(this_FIP_signal.sig_CD{fiber}(:,2)-interval(2)));
+                    Y = this_FIP_signal.sig_CD{fiber}(i_start:i_end,:);
                 case 'data'
-                    [~, i_start]=min(abs(this_FIP_signal.data{fiber}(:,2)-interval(1)));
-                    [~, i_end]=min(abs(this_FIP_signal.data{fiber}(:,2)-interval(2)));
-                    Y=this_FIP_signal.data{fiber}(i_start:i_end,:);
+                    [~, i_start] = min(abs(this_FIP_signal.data{fiber}(:,2)-interval(1)));
+                    [~, i_end] = min(abs(this_FIP_signal.data{fiber}(:,2)-interval(2)));
+                    Y = this_FIP_signal.data{fiber}(i_start:i_end,:);
                 otherwise
                     error(['Unknown input: ', signal ' please input 405nm, CD or data.'])
             end
             
             % Detrend (only works with bioinformatics toolbox installed)
             try
-                Y_detrend=msbackadj(Y(:,2),Y(:,1),'Showplot',1);
+                Y_detrend = msbackadj(Y(:,2),Y(:,1),'Showplot',1);
             catch
                 warning('Unable to detrend signal, please install the bioinformatics toolbox.')
                 disp('Continuing method without detrending the signal.')
-                Y_detrend=Y;
+                Y_detrend = Y;
             end
             
             % Find peaks using the prominence threshold.
             % Note that a good prominence threshold could be a certain MAD
             % threshold
-            [peaks, locs]=findpeaks(Y_detrend,'MinPeakProminence',prominence);
+            [peaks, locs] = findpeaks(Y_detrend,'MinPeakProminence',prominence);
             
             % Collect the output
-            output(:,1)=peaks;
-            output(:,2)=Y(locs,2);
+            output(:,1) = peaks;
+            output(:,2) = Y(locs,2);
             
             % Display the events
             figure('Units','normalized',...
@@ -1059,15 +1076,17 @@ classdef FIP_signal <handle
             hold on
             
             % Print data
-            frequency=length(peaks)/(interval(2)-interval(1));
-            amplitude=mean(peaks);
+            frequency = length(peaks)/(interval(2)-interval(1));
+            amplitude = mean(peaks);
             disp(['Event frequency: ' num2str(frequency) 'Hz'])
             disp(['Mean amplitude: ' num2str(amplitude)]);
         end
         
-        function show_correlation(this_FIP_signal)
-            %SHOW_CORRELATION shows the correlation of activity between two
-            %fibers.
+        function show_correlation(this_FIP_signal, interval, option)
+            %SHOW_CORRELATION shows the correlation between two signals.
+            %Only does a proper job if the signals are on the same
+            %timeline!! It will also color code data points collected in
+            %the interval after each available timestamp.
             
             % Currently only works for two fibers
             if this_FIP_signal.np_signals~=2
@@ -1083,20 +1102,77 @@ classdef FIP_signal <handle
             signal_2=this_FIP_signal.data{signal_2};
             %... detrend..?
             
-            figure
+            % Plot all the data points
+            c_figure = figure;
             plot(signal_1(:,1),signal_2(:,1),'.');
             ylabel(this_FIP_signal.info.names{2});
             xlabel(this_FIP_signal.info.names{1});
+            legend
             axis equal
+            hold on
+            
+            % If there are two arguments, the second argument should be a
+            % list of stamps and the third the interval after each stamp
+            if nargin==1
+                return
+            end
+            
+            all_stamps = this_FIP_signal.timestamps;
+            key = [];
+            j = 1;
+            while(j<length(all_stamps))
+                % If option == 'sequential' delete the previous plot and
+                % cycle trough them when the user presses a key
+                if nargin>2 && strcmp(option,'sequential')
+                    waitforbuttonpress;
+                    key = str2num(c_figure.CurrentCharacter);
+                    if exist('last_plot', 'var'); delete(last_plot); end
+                end
+                
+                % If the user pressed a number, go there
+                if ~isempty(key) && key<length(all_stamps)
+                    j = key;
+                end
+                
+                % Grab the stamps
+                stamps = all_stamps{j};
+                
+                % Make an empty index
+                indexer = false(size(signal_1(:,1)));
+
+                % For every spot on the indexer see if it is within a selected
+                % interval
+                for i=1:length(stamps)
+                    % The second collumn has the timeline
+                    indexer(signal_1(:,2)>=stamps(i) & signal_1(:,2)<stamps(i)+interval) = true;
+                end
+
+                % Indexer is now TRUE for all time blocks of size 'interval'
+                % after every 'stamp'. Using that to select the data.
+                signal_1_selection = signal_1(indexer,1);
+                signal_2_selection = signal_2(indexer,1);
+                
+                % Plotting that on top
+                last_plot = plot(signal_1_selection(:,1),signal_2_selection(:,1),'.',...
+                    'DisplayName',this_FIP_signal.timestamps_names{j},...
+                    'MarkerSize',10);
+                
+                % Increase j to plot the data for the next stamps
+                j = j+1;
+            end
+            
             
         end
         
         function sig_CD = get.sig_CD(this_FIP_signal)
-            % Get sig_CD based on the settings
+            % Get sig_CD based on the settings. If the smooth_CD property
+            % is 1 (default) no rolling average is applied. Note that the
+            % second collumn is always the timeline. i is the signal
+            % number.
             for i=1:this_FIP_signal.np_signals
-                sig_CD{i}(:,1)=smooth(this_FIP_signal.raw_data.sig{i},...
+                sig_CD{i}(:,1) = smooth(this_FIP_signal.raw_data.sig{i},...
                     this_FIP_signal.settings.smooth_CD);
-                sig_CD{i}(:,2)=this_FIP_signal.raw_data.timeline{i};
+                sig_CD{i}(:,2) = this_FIP_signal.raw_data.timeline{i};
                 
                 % Adjust the timeline based on the time_offset.
                 sig_CD{i}(:,2)=sig_CD{i}(:,2)-this_FIP_signal.settings.time_offset;
@@ -1108,44 +1184,57 @@ classdef FIP_signal <handle
         
         function sig_405 = get.sig_405(this_FIP_signal)
             % Gets the sig_405 trace based on the settings
+            
+            % For every signal.
             for i=1:this_FIP_signal.np_signals
                 
                 % Check if 405nm refference signal available
                 if isnan(this_FIP_signal.raw_data.ref{i})
-                    sig_405{i}=zeros(1,2); %no refference signal
-                    sig_405{i}(1)=this_FIP_signal.raw_data.sig{i}(1,1);
+                    sig_405{i} = zeros(1,2); %no refference signal
+                    sig_405{i}(1) = this_FIP_signal.raw_data.sig{i}(1,1);
                     % This last line is so that sig_405 can still be ploted
                     % (saves a lot of trouble in other methods) without
                     % changing the scaling of the figure.
                     continue
                 end
                 
-                temp=smooth(this_FIP_signal.raw_data.ref{i},this_FIP_signal.settings.smooth_405);
+                % Figure out what fit to apply (is a smooth factor of 1 =
+                % no smooth).
+                temp = smooth(this_FIP_signal.raw_data.ref{i},this_FIP_signal.settings.smooth_405);
+                
+                % Scroll through the fit methods and apply
                 switch this_FIP_signal.settings.fit_405
                     case 'unfit'
                         % do not fit 405nm signal
-                        sig_405{i}(:,1)=temp;
-                        sig_405{i}(:,2)=this_FIP_signal.raw_data.timeline{i};
-                    case 'polyfit_2'
+                        sig_405{i}(:,1) = temp;
+                        sig_405{i}(:,2) = this_FIP_signal.raw_data.timeline{i};
+                        
+                    case 'polyfit 2'
                         % default, fit first 2 polynomal coeficients
-                        p=polyfit(temp,this_FIP_signal.raw_data.sig{i},1);
-                        sig_405{i}(:,1)=temp*p(1)+p(2);
-                        sig_405{i}(:,2)=this_FIP_signal.raw_data.timeline{i};
-                    case 'polyfit_1'
+                        p = polyfit(temp,this_FIP_signal.raw_data.sig{i},1);
+                        sig_405{i}(:,1) = temp*p(1)+p(2);
+                        sig_405{i}(:,2) = this_FIP_signal.raw_data.timeline{i};
+                    
+                    case 'polyfit 1'
                         % fit only first polynomal coeficient
-                        p=polyfit(temp,this_FIP_signal.raw_data.sig{i},1);           
-                        sig_405{i}(:,1)=temp*p(1);
-                        sig_405{i}(:,2)=this_FIP_signal.raw_data.timeline{i};
-                    case 'fit_mean'
+                        p = polyfit(temp,this_FIP_signal.raw_data.sig{i},1);           
+                        sig_405{i}(:,1) = temp*p(1);
+                        sig_405{i}(:,2) = this_FIP_signal.raw_data.timeline{i};
+                    
+                    case 'fit means'
                         % substract the difference of the means
-                        sig_mean=mean(this_FIP_signal.raw_data.sig{i});
-                        ref_mean=mean(temp);
-                        mean_dif=sig_mean-ref_mean;
-                        sig_405{i}(:,1)=temp+mean_dif;
-                        sig_405{i}(:,2)=this_FIP_signal.raw_data.timeline{i};
-                    case 'sliding_window'
-                        % polyfit_2, but using a sliding window
-                        window_size=this_FIP_signal.settings.sw_size*this_FIP_signal.info.framerate; %Data points now
+                        sig_mean = mean(this_FIP_signal.raw_data.sig{i});
+                        ref_mean = mean(temp);
+                        mean_dif = sig_mean-ref_mean;
+                        sig_405{i}(:,1) = temp+mean_dif;
+                        sig_405{i}(:,2) = this_FIP_signal.raw_data.timeline{i};
+                    
+                    case 'sliding window'
+                        % polyfit 2, but using a sliding window. The window
+                        % size is given by the property sw_size (in
+                        % seconds) and addapted to data points by
+                        % multiplying with the framerate.
+                        window_size = this_FIP_signal.settings.sw_size*this_FIP_signal.info.framerate; %Data points now
                         window_size=window_size-1;
                         sig_405{i}=zeros(length(temp),2);
                         for j=1:window_size:length(temp)-window_size
@@ -1156,6 +1245,7 @@ classdef FIP_signal <handle
                         p=polyfit(temp(j:end),this_FIP_signal.raw_data.sig{i}(j:end),1);
                         sig_405{i}(j:end,1)=temp(j:end)*p(1)+p(2);
                         sig_405{i}(:,2)=this_FIP_signal.raw_data.timeline{i};  
+                    
                     otherwise
                         warning('fit method unkown')
                 end
@@ -1163,9 +1253,11 @@ classdef FIP_signal <handle
                 % This is pretty bad, but if the polyfit functions produced
                 % a warning about a scaling issue we are going to supress
                 % that warning from now on. We'll even put out a note to
-                % the user about this, so it's not THAT bad. (The scaling
+                % the user about this, so it's not THAT bad. The scaling
                 % issue is not a problem for what we use poly fit for, and
-                % if it was, it would be obvious from the data).
+                % if it was, it would be obvious from the data. It arises
+                % from when there are huge artifacts, for instance if the
+                % LED power was adjusted during a recording.
                 w = warning('query','last');
                 if ~isempty(w) && strcmp(w.identifier,'MATLAB:polyfit:RepeatedPointsOrRescale')
                     warning('off','MATLAB:polyfit:RepeatedPointsOrRescale');
@@ -1175,25 +1267,36 @@ classdef FIP_signal <handle
                 end
                 
                 % Ajust time based on offset
-                sig_405{i}(:,2)=sig_405{i}(:,2)-this_FIP_signal.settings.time_offset;
+                sig_405{i}(:,2) = sig_405{i}(:,2)-this_FIP_signal.settings.time_offset;
                 
                 % Apply any croppings (note: fit using original (uncropped)
                 % data...)
-                sig_405{i}=this_FIP_signal.apply_crop(sig_405{i},i);
+                sig_405{i} = this_FIP_signal.apply_crop(sig_405{i},i);
             end            
         end
         
         function data = get.data(this_FIP_signal)
-            % Gets the processed FIP_signal based on the settings
+            % GET.DATA is the most important method of the FIP_signal
+            % class. It is responsible for calculating the actual data. To
+            % do this it uses whatever has been set in the settings
+            % property.
+            
+            % For every signal
             for i=1:this_FIP_signal.np_signals
                 
+                % Is there a 405nm signal to use for normalization?
                 if length(this_FIP_signal.sig_405{i})~=2
+                    % Substract 405nm signal (produced by sig_405 getter
+                    % function) from the calcium-dependend signal (sig_CD).
+                    % Add the first value of sig_CD to get an estimation of
+                    % F. (Deisseroth method)
                     signal_norm = this_FIP_signal.sig_CD{i}(:,1)-this_FIP_signal.sig_405{i}(:,1)+this_FIP_signal.sig_CD{i}(1,1);
                 else % no 405nm signal
                     signal_norm = this_FIP_signal.sig_CD{i}(:,1);
                 end
 
-                % check what unit the data should be, row two is SU for data.
+                % check what unit the data should be, row two of the
+                % signal_units property is the signal units for the data.
                 switch this_FIP_signal.settings.signal_units{i,2}
                     case 'deltaF/F'
                         % Standard F = mean of whole signal
@@ -1202,22 +1305,24 @@ classdef FIP_signal <handle
                         if mean(signal_norm(:,1))<0
                             warning('The signal mean (F) is <0 which will flip the ''normalized'' signal.')
                         end
-                        data{i}(:,1)=(signal_norm(:,1)-mean(signal_norm(:,1)))./mean(signal_norm(:,1));
+                        data{i}(:,1) = (signal_norm(:,1)-mean(signal_norm(:,1)))./mean(signal_norm(:,1));
                     case 'F'
                         % Present F, which is the movement and
                         % bleaching-corrected signal.
-                        data{i}(:,1)=signal_norm(:,1);
+                        data{i}(:,1) = signal_norm(:,1);
                     case 'Z-score'
                         % Taking the Z-score directly from the normalized
-                        % trace, but I can prove that this is equal to the
-                        % Z-score from the deltaF/F trace.
-                        data{i}(:,1)=(signal_norm(:,1)-mean(signal_norm(:,1)))/std(signal_norm(:,1));
+                        % trace, but this is equal to the Z-score from the 
+                        % deltaF/F trace. Note that if there is any 
+                        % bleaching in the signal this is not a good 
+                        % measure.
+                        data{i}(:,1) = (signal_norm(:,1)-mean(signal_norm(:,1)))/std(signal_norm(:,1));
                 end
                 
-                % Timeline
+                % The timeline for this specific signal.
                 data{i}(:,2)=this_FIP_signal.sig_CD{i}(:,2);
 
-                % Apply smooth if requested
+                % Apply smooth (rolling average) if requested
                 data{i}(:,1)=smooth(data{i}(:,1),this_FIP_signal.settings.smooth_data);
             end       
         end  
@@ -1242,31 +1347,36 @@ classdef FIP_signal <handle
             logAI=m_logAI;
         end
         
-        function manual_time_stamp(this_FIP_signal,stamp_nr)
+        function manual_time_stamp(this_FIP_signal, stamp_nr)
             % This function will add a timestamp to the time stamps series
             % in cell 'stamps_nr'. If these do not exist the user will be
             % prompted to make a new timestamps series. The time of the
             % stamps will be this_fip_signal.c_time.
             
-            time=this_FIP_signal.c_time;
+            time = this_FIP_signal.c_time;
             
             if length(this_FIP_signal.timestamps)>=stamp_nr
                 this_FIP_signal.timestamps{stamp_nr}=[this_FIP_signal.timestamps{stamp_nr}, time];
             else
                 disp('Stamps do not exist.')
-            end
-            
-            
-            
+            end  
         end
         
         function update_plots(this_FIP_signal, varargin)
-            % Will update all plots (special function)
+            % UPDATE_PLOTS is responsible for updating the figure. This
+            % happens in general after the user changes a settings (via a
+            % listener to the settings property) or if the user requests
+            % different information. The reason this method is not private
+            % is that external functions should be able to update this
+            % figure if neccesary.
             
+            % This is so external functions know that something changes.
             notify(this_FIP_signal,'state_change');
             
-            if ~this_FIP_signal.figure_open % if figure exists (could also just put return)
-                % Run getter functions once
+            % Only use this methods if the figure exists (could also just put return)
+            if ~this_FIP_signal.figure_open 
+                % Run getter functions once, don't botter updating
+                % non-existing plots
                 this_FIP_signal.sig_CD;
                 this_FIP_signal.sig_405;
                 this_FIP_signal.data;
@@ -1274,19 +1384,20 @@ classdef FIP_signal <handle
                 return
             end
             
-            type='standard';
-            n_arg=nargin;
-            if n_arg>1
-                for i=1:(n_arg-1)
-                    if ischar(varargin{i}) && strcmp(varargin{i},'type')
-                        type=varargin{i+1};
-                        break
-                    end
-                end
-            end
+            % I think I can remove this now
+%             type='standard';
+%             n_arg=nargin;
+%             if n_arg>1
+%                 for i=1:(n_arg-1)
+%                     if ischar(varargin{i}) && strcmp(varargin{i},'type')
+%                         type=varargin{i+1};
+%                         break
+%                     end
+%                 end
+%             end
             
-            switch type % This one goes all the way down
-                case 'standard'
+%             switch type % This one goes all the way down
+%                 case 'standard'
                     % Run getter functions once
                     m_sig_CD=this_FIP_signal.sig_CD;
                     m_sig_405=this_FIP_signal.sig_405;
@@ -1300,7 +1411,7 @@ classdef FIP_signal <handle
                         use_current=false;
                     end
 
-                    % Check if all signals have same ylabel of more comples
+                    % Check if all signals have same ylabel or not
                     same_y_label.raw=true;
                     same_y_label.data=true;
                     for j=2:this_FIP_signal.np_signals
@@ -1313,14 +1424,16 @@ classdef FIP_signal <handle
                             same_y_label.data=false;
                         end
                     end
-
+                    
+                    % Figure out which signals should be shown
                     for i=1:this_FIP_signal.np_signals
                         if (use_current && i==this_FIP_signal.c_signal) || this_FIP_signal.fibers_shown(i)
                             visibility='on';
                         else
                             visibility='off';
                         end
-
+                        
+                        % Show raw signal or analysed data?
                         if this_FIP_signal.raw_signal
                             set(this_FIP_signal.handles.sig_CD{i},...
                                 'Visible',visibility,...
@@ -1342,7 +1455,8 @@ classdef FIP_signal <handle
                            else
                                this_FIP_signal.handles.ylabel.String='mixed signals'; 
                            end
-                        else
+                           
+                        else % Aha! Show normalized trace (data) instead.
                             set(this_FIP_signal.handles.sig_CD{i},...
                                 'Visible','off',...
                                 'XData',m_sig_CD{i}(:,2),...
@@ -1355,6 +1469,7 @@ classdef FIP_signal <handle
                                'Visible',visibility,...
                                'XData',m_data{i}(:,2),...
                                'YData',m_data{i}(:,1));
+                           
                            % Ylabel
                            if use_current || same_y_label.data
                                this_FIP_signal.handles.ylabel.String=...
@@ -1405,18 +1520,6 @@ classdef FIP_signal <handle
                             end
                         end
                     end
-                    
-                    % Work on the x_axis, use window and c_time
-                    if strcmp(this_FIP_signal.window,'all time')
-                        x_limits=[0 max(this_FIP_signal.info.max_time)];
-                    else
-                        m_c_time=this_FIP_signal.c_time;
-                        m_window=this_FIP_signal.window;
-                        x_limits=[m_c_time-0.5*m_window m_c_time+0.5*m_window];
-                        this_FIP_signal.handles.time_bar.Value=m_c_time;
-                    end
-                    this_FIP_signal.handles.FIP_plot.XLim=x_limits;
-                    this_FIP_signal.handles.logAI_plot.XLim=x_limits;
 
                     % Indicator text
                     this_FIP_signal.handles.text_1.String=this_FIP_signal.info.names{this_FIP_signal.c_signal};
@@ -1438,29 +1541,6 @@ classdef FIP_signal <handle
                         this_FIP_signal.handles.time_stamp_button.String='LogAI data';
                     end
                     
-
-                case 'new_time' % it's all the way up there
-                    % Work on the x_axis
-                        if strcmp(this_FIP_signal.window,'all time')
-                            x_limits=[0 max(this_FIP_signal.info.max_time)];
-                        else
-                            m_c_time=this_FIP_signal.c_time;
-                            m_window=this_FIP_signal.window;
-                            x_limits=[m_c_time-0.5*m_window m_c_time+0.5*m_window];
-                            this_FIP_signal.handles.time_bar.Value=m_c_time;
-                        end
-                        this_FIP_signal.handles.FIP_plot.XLim=x_limits;
-                        this_FIP_signal.handles.logAI_plot.XLim=x_limits;
-                otherwise
-                    warning('Not clear about plot update type')
-            end
-            
-            % Either way, the c_time indicator line is always updated
-            temp=this_FIP_signal.handles.FIP_plot.YLim;
-            m_c_time=this_FIP_signal.c_time;
-            set(this_FIP_signal.handles.c_time_line,...
-                'XData',[m_c_time m_c_time],...
-                'YData',[temp(1) temp(2)]);
         end
         
     end
@@ -1469,9 +1549,9 @@ classdef FIP_signal <handle
 
     methods (Access = private)
         
-        function close_req(this_FIP_signal, scr, ev)
-            % deals with closing of the object
-            this_FIP_signal.figure_open=false;
+        function close_req(this_FIP_signal, ~, ~)
+            % deals with closing of the figure
+            this_FIP_signal.figure_open = false;
             delete(this_FIP_signal.handles.main_figure)
         end
         
@@ -1515,7 +1595,7 @@ classdef FIP_signal <handle
             end
         end
         
-        function key_release(this_FIP_signal, scr, ev)
+        function key_release(this_FIP_signal, ~, ~)
             % deals with key release
             this_FIP_signal.key_down=false;
             this_FIP_signal.key_pressed='empty';
@@ -1523,7 +1603,9 @@ classdef FIP_signal <handle
         end
         
         function make_context(this_FIP_signal)
-            % Function is responsible for making all the context menus
+            % Function is responsible for making all the context menus. All
+            % labels call the came function 'context_menu'. That function
+            % than checks the label and performs the requested action.
             
             % FIP_plot context menu
             this_FIP_signal.handles.drop_down.FIP_plot=uicontextmenu;
@@ -1548,7 +1630,7 @@ classdef FIP_signal <handle
                 'Label','smooth 1 sec',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu('Parent',temp_menu,'Tag','data',...
-                'Label','custom',...
+                'Label','smooth x sec',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu('Parent',temp_menu,'Tag','data',...
                 'Label','no smooth',...
@@ -1581,7 +1663,7 @@ classdef FIP_signal <handle
                 'Label','smooth 1 sec',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu('Parent',temp_menu,'Tag','sig_405',...
-                'Label','custom',...
+                'Label','smooth x sec',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu('Parent',temp_menu,'Tag','sig_405',...
                 'Label','no smooth',...
@@ -1589,10 +1671,10 @@ classdef FIP_signal <handle
             temp_menu=uimenu(this_FIP_signal.handles.drop_down.sig_405,...
                 'Label','fit method');
             uimenu('Parent',temp_menu,'Tag','sig_405',...
-                'Label','polyfit_2 (standard)',...
+                'Label','polyfit 2 (standard)',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu('Parent',temp_menu,'Tag','sig_405',...
-                'Label','polyfit_1',...
+                'Label','polyfit 1',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu('Parent',temp_menu,'Tag','sig_405',...
                 'Label','fit means',...
@@ -1604,7 +1686,7 @@ classdef FIP_signal <handle
                 'Label','sliding window',...
                 'Callback',@this_FIP_signal.context_menu)
             
-            % Drop-down menus for logAI plot
+            % logAI plot context menu
             this_FIP_signal.handles.drop_down.logAI=uicontextmenu;
             temp_menu=uimenu(this_FIP_signal.handles.drop_down.logAI,...
                 'Label','use for time allignment');
@@ -1631,7 +1713,7 @@ classdef FIP_signal <handle
                 'Tag','log_AI',...
                 'Callback',@this_FIP_signal.context_menu)
             
-            % Drop-down menu for timestamps
+            % Timestamps context menu
             this_FIP_signal.handles.drop_down.time_stamps=uicontextmenu;
             uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
                 'Label','derive timestamps',...
@@ -1659,7 +1741,7 @@ classdef FIP_signal <handle
                 'Callback',@this_FIP_signal.context_menu)
         end
         
-        function context_menu(this_FIP_signal, scr, ev)
+        function context_menu(this_FIP_signal, scr, ~)
             % Deals with all context menus. I realize it's quite a long
             % list, but I've found it usefull to put all context menu
             % options in one big function. They are quite organized and
@@ -1670,131 +1752,65 @@ classdef FIP_signal <handle
             % itself to the correct menu in the function make_context.
             % Refer to this function in the callback property. It migh be
             % usefull to know that the property this_FIP_signal.r_mouse_scr
-            % contains the source of the last right mouse button click.
+            % contains the source of the last right mouse button click. So
+            % with that and the label (scr.Label) you should have all the
+            % information you need to figure out what the user wants.
 
             % If the context menu option is simple and not used for
             % multiple options I try to put all the code in here rather
             % then making a seperate function.
             
+            % Find the target of the right mousebutton click
+            target = this_FIP_signal.r_mouse_scr;
+            
             % Scroll to possible actions
             switch scr.Label
-                case 'smooth 1 sec'
-                    scr=this_FIP_signal.r_mouse_scr;
-                    switch scr.Tag(1:5)
-                        case 'sig_4'
-                            this_FIP_signal.settings.smooth_405=this_FIP_signal.info.framerate;
-                        case 'sig_C'
-                            this_FIP_signal.settings.smooth_CD=this_FIP_signal.info.framerate;
-                        case 'data.'
-                            this_FIP_signal.settings.smooth_data=this_FIP_signal.info.framerate;
-                        otherwise
-                            warning('Unclear which signal should be smoothed')
-                    end
-                case 'custom'
-                    scr=this_FIP_signal.r_mouse_scr;
-                    smooth_value=inputdlg('# smooth datapoints');
-                     switch scr.Tag(1:5)
-                        case 'sig_4'
-                            this_FIP_signal.settings.smooth_405=str2num(smooth_value{1});
-                        case 'sig_C'
-                            this_FIP_signal.settings.smooth_CD=str2num(smooth_value{1});
-                        case 'data.'
-                             this_FIP_signal.settings.smooth_data=str2num(smooth_value{1});
-                        otherwise
-                            warning('Unclear which signal should be smoothed')
-                     end
-                case 'no smooth'
-                    smooth_value=1;
-                    scr=this_FIP_signal.r_mouse_scr;
-                     switch scr.Tag(1:5)
-                        case 'sig_4'
-                            this_FIP_signal.settings.smooth_405=smooth_value;
-                        case 'sig_C'
-                            this_FIP_signal.settings.smooth_CD=smooth_value;
-                        case 'data.'
-                             this_FIP_signal.settings.smooth_data=smooth_value;
-                        otherwise
-                            warning('Unclear which signal should be un-smoothed')
-                     end
-                case 'polyfit_2 (standard)'
-                    this_FIP_signal.settings.fit_405='polyfit_2';
-                case 'polyfit_1'
-                    this_FIP_signal.settings.fit_405='polyfit_1';
-                case 'fit means'
-                    this_FIP_signal.settings.fit_405='fit_mean';
-                case 'no fit'
-                    this_FIP_signal.settings.fit_405='unfit';
-                case 'sliding window'
-                    this_FIP_signal.settings.fit_405='sliding_window';
+                
+                case {'smooth 1 sec', 'smooth x sec', 'no smooth'}
+                    this_FIP_signal.apply_smooth(target.Tag(1:5), scr.Label(8));
+                     
+                case {'polyfit 1', 'polyfit 2 (standard)'}
+                    this_FIP_signal.settings.fit_405 = scr.Label(1:9);
+
+                case {'fit means', 'no fit', 'sliding window'}
+                    this_FIP_signal.settings.fit_405 = scr.Label;
+                    
                 case 'export data'
-                    variable_name=inputdlg('Data name:');
+                    variable_name = inputdlg('Data name:');
                     assignin('base',variable_name{1},...
                         this_FIP_signal.data{this_FIP_signal.c_signal});
+                    
                 case 'Reset zoom'
-                    this_FIP_signal.window='all time';
-                    this_FIP_signal.update_plots;
+                    this_FIP_signal.window = 'all time';
+                    this_FIP_signal.set_time();
+                    
                 case 'Restore raw data'
-                    % Restoring raw data (mostly settings)
-                    m_settings=this_FIP_signal.settings;
-                    m_settings.time_offset=0;
-                    m_settings.smooth_405=1;
-                    m_settings.smooth_CD=1;
-                    m_settings.smooth_data=1;
-                    m_settings.fit_405='unfit';
-                    for i=1:this_FIP_signal.np_signals
-                        m_settings.signal_units{i,1}='F';
-                        m_settings.signal_units{i,2}='deltaF/F';
-                    end
-                    this_FIP_signal.settings=m_settings;
-                    % Other:
-                    this_FIP_signal.log_AI_used=...
-                        true(length( this_FIP_signal.log_AI_used),1);
-                    % Update
-                    this_FIP_signal.update_plots;
-                case 'Z-score'
-                    scr=this_FIP_signal.r_mouse_scr;
-                    if strcmp(scr.Tag(1:4),'data')
+                    this_FIP_signal.restore_raw_data();
+
+                case {'Z-score', 'deltaF/F', 'F'}
+                    if strcmp(target.Tag(1:4),'data')
                         s_type=2; % Data
                     else % This needs work
                         s_type=1; % CD or 405nm signal
                     end
-                    index=find('.'==scr.Tag,1)+1; %after the point is the signal #
-                    s_np=str2num(scr.Tag(index:end));
-                    this_FIP_signal.settings.signal_units{s_np,s_type}='Z-score';
-                case 'deltaF/F'
-                    scr=this_FIP_signal.r_mouse_scr;
-                    if strcmp(scr.Tag(1:4),'data')
-                        s_type=2; % Data
-                    else % This needs work
-                        s_type=1; % CD or 405nm signal
-                    end
-                    index=find('.'==scr.Tag,1)+1; %after the point is the signal #
-                    s_np=str2num(scr.Tag(index:end));
-                    this_FIP_signal.settings.signal_units{s_np,s_type}='deltaF/F';
-                case 'F'
-                    scr=this_FIP_signal.r_mouse_scr;
-                    if strcmp(scr.Tag(1:4),'data')
-                        s_type=2; % Data
-                    else % This needs work
-                        s_type=1; % CD or 405nm signal
-                    end
-                    index=find('.'==scr.Tag,1)+1; %after the point is the signal #
-                    s_np=str2num(scr.Tag(index:end));
-                    this_FIP_signal.settings.signal_units{s_np,s_type}='F';
+                    index=find('.'==target.Tag,1)+1; %after the point is the signal #
+                    s_np=str2num(target.Tag(index:end));
+                    this_FIP_signal.settings.signal_units{s_np,s_type}=scr.Label;
+
                 case 'delete'
                     % delete src of R mouse click
-                    scr=this_FIP_signal.r_mouse_scr;
-                    if strcmp(scr.Tag(1:3),'AI ')
+                    if strcmp(target.Tag(1:3),'AI ')
                         % It's a logAI trace
-                        AI_np=str2num(scr.Tag(4:end));
+                        AI_np=str2num(target.Tag(4:end));
                         this_FIP_signal.log_AI_used(AI_np+1)=false;
                         % the +1 is because in this property the first
                         % column is the timeline.
                     end 
-                    delete(scr) %deletes the actual plot, not super ellegant
+                    delete(target) %deletes the actual plot, not super ellegant
+                    
                 case 'derive timestamps'
                     % Derive timestamps from input
-                    tag=this_FIP_signal.r_mouse_scr.Tag;
+                    tag=target.Tag;
                     if strcmp(tag(1:4),'stam')
                         % Deriving stamps from stamps
                         nr=str2num(tag(8:end));
@@ -1885,56 +1901,21 @@ classdef FIP_signal <handle
                     % all settings
                     assignin('base','peri_event',test)
                     disp('Peri_event plot handle stored in base workspace.') 
-                case 'first peak is 5sec'
-                    % Find time of first peak
+
+                case {'first peak is 5sec', 'first peak is 15sec'}
+                    % Find time of first peak (derive time stamps first)
                     stamps=this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr);
-                    time_offset=stamps(1)-5;
-                    disp(['Time offset is ' num2str(time_offset) ' sec.'])
-                    this_FIP_signal.settings.time_offset=time_offset;
-                    this_FIP_signal.update_plots;
-                    % Check if there are allready timestamps stored
-                    if isfield(this_FIP_signal.handles,'time_stamp_plots')
-                        warning('There all allready timestamps, those will NOT be offset.')
-                    end
-                case 'first peak is 15sec'
-                    % Find time of first peak
-                    stamps=this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr);
-                    time_offset=stamps(1)-15;
-                    disp(['Time offset is ' num2str(time_offset) ' sec.'])
-                    this_FIP_signal.settings.time_offset=time_offset;
-                    this_FIP_signal.update_plots;
-                    % Check if there are allready timestamps stored
-                    if isfield(this_FIP_signal.handles,'time_stamp_plots')
-                        warning('There all allready timestamps, those will NOT be offset.')
-                    end
-                case 'this stamp is 5sec'
-                    % Allign time based on clicked timestamp
-                    stamps=this_FIP_signal.r_mouse_scr.XData;
-                    x_loc=this_FIP_signal.mouse_start(1);
-                    [~, index]=min(abs(stamps-x_loc));
-                    time=stamps(index);
-                    time_offset=time-5;
-                    disp(['Time offset is ' num2str(time_offset) ' sec.'])
-                    this_FIP_signal.settings.time_offset=time_offset;
-                    this_FIP_signal.update_plots;
-                    % Check if there are allready timestamps stored
-                    if isfield(this_FIP_signal.handles,'time_stamp_plots')
-                        warning('There all allready timestamps, those will NOT be offset.')
-                    end 
-                case 'this stamp is 15sec'
-                    % Allign time based on clicked timestamp
-                    stamps=this_FIP_signal.r_mouse_scr.XData;
-                    x_loc=this_FIP_signal.mouse_start(1);
-                    [~, index]=min(abs(stamps-x_loc));
-                    time=stamps(index);
-                    time_offset=time-15;
-                    disp(['Time offset is ' num2str(time_offset) ' sec.'])
-                    this_FIP_signal.settings.time_offset=time_offset;
-                    this_FIP_signal.update_plots;
-                    % Check if there are allready timestamps stored
-                    if isfield(this_FIP_signal.handles,'time_stamp_plots')
-                        warning('There all allready timestamps, those will NOT be offset.')
-                    end
+                    time_offset=stamps(1)-str2num(scr.Label(end-4:end-3));
+                    this_FIP_signal.set_time_offset(time_offset);
+
+                case {'this stamp is 5sec', 'this stamp is 15sec'}
+                    % Align time based on the clicked timestamp
+                    stamps = this_FIP_signal.r_mouse_scr.XData;
+                    x_loc = this_FIP_signal.mouse_start(1);
+                    [~, index] = min(abs(stamps-x_loc));
+                    time_offset = stamps(index)-str2num(scr.Label(end-4:end-3));
+                    this_FIP_signal.set_time_offset(time_offset);
+
                 case 'remove noise'
                     % Option to remove specific intervals from logAI
                     % signal.
@@ -1950,15 +1931,13 @@ classdef FIP_signal <handle
                     this_FIP_signal.cut_logAI(AI_np,...
                         [str2num(Interval{1}), str2num(Interval{2})],...
                         str2num(Interval{3}));
+                    
                 case 'Legend'
                     % Display graph legend
                     source=this_FIP_signal.r_mouse_scr.Parent;
                     hLegend=findobj(source, 'Type', 'Legend');
-                    if isempty(hLegend)
-                        legend;
-                    else
-                        delete(hLegend)
-                    end
+                    if isempty(hLegend); legend; else; delete(hLegend); end
+                    
                 otherwise
                     warning('Menu option not yet available.')
             end
@@ -2021,7 +2000,7 @@ classdef FIP_signal <handle
             end
         end
         
-        function mouse_motion(this_FIP_signal, scr, ev)
+        function mouse_motion(this_FIP_signal, ~, ~)
             % Deals with mouse motion
             
             % Find out the type of action
@@ -2042,14 +2021,13 @@ classdef FIP_signal <handle
                         this_FIP_signal.c_time=this_FIP_signal.c_time-time_diff;
                         this_FIP_signal.mouse_action.total_time_dif=...
                             this_FIP_signal.mouse_action.total_time_dif+time_diff;
-                        this_FIP_signal.update_plots('type','new_time');
                     end
                 otherwise
                     warning('mouse error han_114')
             end
         end
         
-        function mouse_release(this_FIP_signal, scr, ev)
+        function mouse_release(this_FIP_signal, ~, ~)
             % Deals with mouse release
             
             % Get the mouse click source
@@ -2068,9 +2046,9 @@ classdef FIP_signal <handle
                             new_XLim=[this_FIP_signal.mouse_start(1),...
                                 punter(1,1)]; % Have to deal with negative lines
                         end
-                        this_FIP_signal.c_time=mean(new_XLim);
                         this_FIP_signal.window=new_XLim(2)-new_XLim(1);
-                        this_FIP_signal.update_plots;
+                        this_FIP_signal.c_time=mean(new_XLim);
+                        %this_FIP_signal.update_plots;
                     end
                     delete(this_FIP_signal.mouse_action.drawing);
                 case 'time_scroll'
@@ -2088,7 +2066,7 @@ classdef FIP_signal <handle
             % Leaving the original click in mouse_start
         end
         
-        function UI_used(this_FIP_signal, scr, ev)
+        function UI_used(this_FIP_signal, scr, ~)
             % This function deals with all UI ellement interaction
             
             button=scr.Tag(1:6); %because put random stuff behind
@@ -2114,7 +2092,6 @@ classdef FIP_signal <handle
                 case 'time_s' % Slider for time control
                     m_c_time=scr.Value;
                     this_FIP_signal.c_time=m_c_time;
-                    this_FIP_signal.update_plots('type','new_time');
                     
                 case 'stamps'% Plot time stamps or logAI
                     this_FIP_signal.AI_plots=~this_FIP_signal.AI_plots;
@@ -2149,6 +2126,118 @@ classdef FIP_signal <handle
             end
             
             output = input;
+        end
+        
+        function set_time(this_FIP_signal, ~, ~)
+            %SET_TIME is responsible for the timeline on the xaxis of both
+            %plots as well as the slider bar and a vertical line (usually
+            %invidisable) that indicates the current time point.
+            % Work on the x_axis
+            
+            % Check if the figure actually exists
+            if ~this_FIP_signal.figure_open
+                return
+            end
+            
+            % If there is no time zoom
+            if strcmp(this_FIP_signal.window,'all time')
+                x_limits = [0 max(this_FIP_signal.info.max_time)];
+            else % If we are not looking at the entire timeline
+                m_c_time = this_FIP_signal.c_time;
+                m_window = this_FIP_signal.window;
+                x_limits = [m_c_time-0.5*m_window m_c_time+0.5*m_window];
+                
+                % Now for the time bar, we might have to ajust it if the
+                % user is zooming in outside the time window in which
+                % signal was collected.
+                if m_c_time>this_FIP_signal.handles.time_bar.Max
+                    this_FIP_signal.handles.time_bar.Max = m_c_time;
+                elseif m_c_time<this_FIP_signal.handles.time_bar.Min
+                    this_FIP_signal.handles.time_bar.Min = m_c_time;
+                end
+                
+                % Update the time bar slider
+                this_FIP_signal.handles.time_bar.Value = m_c_time;
+            end
+            
+            % Update the x-axis of both plots
+            this_FIP_signal.handles.FIP_plot.XLim = x_limits;
+            this_FIP_signal.handles.logAI_plot.XLim = x_limits;
+            
+            % Update the c_time indicator line is always updated
+            temp=this_FIP_signal.handles.FIP_plot.YLim;
+            m_c_time=this_FIP_signal.c_time;
+            set(this_FIP_signal.handles.c_time_line,...
+                'XData',[m_c_time m_c_time],...
+                'YData',[temp(1) temp(2)]);
+        end
+        
+        function set_time_offset(this_FIP_signal, time_offset)
+            %SET_TIME_OFFSET applies a time offset to the signal. This is
+            %generally used to allign the FIP signal with (for instance)
+            %behavioral data or ephys data.
+            disp(['Time offset is ' num2str(time_offset) ' sec.'])
+            this_FIP_signal.settings.time_offset=time_offset;
+
+            % Check if there are allready timestamps stored
+            if isfield(this_FIP_signal.handles,'time_stamp_plots')
+                warning('There all allready timestamps, those will NOT be offset.')
+            end
+        end
+        
+        function apply_smooth(this_FIP_signal, target, smooth_factor)
+            %APPLY_SMOOTH applies a rolling average smooth to the target
+            
+            % Figure out the smooth factor
+            switch smooth_factor
+                case 't' % comes from no smooth
+                    smooth_factor = 1;
+                case 'x' % comes from smooth x sec
+                    smooth_factor = inputdlg('# smooth datapoints');
+                    smooth_factor = str2num(smooth_factor{1});
+                otherwise
+                    smooth_factor = str2num(smooth_factor)*this_FIP_signal.info.framerate;
+            end
+            
+            % Figure out the target and apply the smooth
+            switch target
+                case 'sig_4'
+                    this_FIP_signal.settings.smooth_405 = smooth_factor;
+                case 'sig_C'
+                    this_FIP_signal.settings.smooth_CD = smooth_factor;
+                case 'data.'
+                    this_FIP_signal.settings.smooth_data = smooth_factor;
+                otherwise
+                    warning('Unclear which signal should be smoothed')
+            end     
+        end 
+        
+        function restore_raw_data(this_FIP_signal)
+            % This method undoes smooth, fit and time-offset. It does not
+            % undo the cropping of any data.
+            
+            % Make sure the callback only get's called once    
+            m_settings = this_FIP_signal.settings;
+            
+            % Apply original settings
+            m_settings.time_offset=0;
+            m_settings.smooth_405=1;
+            m_settings.smooth_CD=1;
+            m_settings.smooth_data=1;
+            m_settings.fit_405='unfit';
+            
+            % Show F and deltaF/F data, no Z-scores or anything else
+            for i=1:this_FIP_signal.np_signals
+                m_settings.signal_units{i,1}='F';
+                m_settings.signal_units{i,2}='deltaF/F';
+            end
+            
+            % Update the settings
+            this_FIP_signal.settings=m_settings;
+            
+            % Undo the deletion of all log_AI traces
+            this_FIP_signal.log_AI_used=...
+                true(length( this_FIP_signal.log_AI_used),1);
         end
         
     end

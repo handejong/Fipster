@@ -395,6 +395,8 @@ classdef FIP_acquisition < handle
                 end
                 
                 % Store the data in the correct channel
+                % FOR  TWO-CHANNEL RECORDINGS THE FIRST FRAME IS TAKEN TO
+                % BE REF, WHILE THE 2TH FRAME IS THE FRIST SIGNAL FRAME.
                 sr_pair = ceil(n_frame / obj.aq_settings.channels);
                 if mod(n_frame,obj.aq_settings.channels) == 0
                     signal(sr_pair, 1, :) = data;
@@ -418,9 +420,9 @@ classdef FIP_acquisition < handle
                     
                 end
                 
-                % Check if the Arduino (is used) has anything to say
+                % Check if the Arduino (if used) has anything to say
                 if strcmp(obj.cam_settings.trigger_type, 'arduino') && obj.arduino_settings.serial.BytesAvailable>0
-                    fgets(obj.arduino_settings.serial)
+                    obj.Arduino_serial_reader; % This function will deal with whatever the Arduino has to say
                 end
                 
                 % Save data with raw timestamps in a .csv for backup
@@ -558,6 +560,7 @@ classdef FIP_acquisition < handle
             end  
             
             % Store the signal in the workspace
+            % Super bad form, but very convenient as well.
             assignin('base', 'new_signal', signal)
             assignin('base', 'new_ref', ref)
             
@@ -655,6 +658,7 @@ classdef FIP_acquisition < handle
                 option=obj.cam_settings.options(camDeviceN);
                 disp('No new video object')
             else
+                
                 option=obj.cam_settings.options(camDeviceN);
                 vid = videoinput(option.adaptors, option.IDs, option.formats);
                 src = getselectedsource(vid);
@@ -687,17 +691,18 @@ classdef FIP_acquisition < handle
                     obj.cam_settings.vid.FramesPerTrigger = 1;
                     
                     % Exposure settings
-                    obj.cam_settings.src.FrameRate = obj.aq_settings.rate;
+                    obj.cam_settings.src.FrameRate = 1;
                     obj.cam_settings.src.FrameRateMode = 'Off';
-                    obj.cam_settings.src.ExposureMode = 'off'; % <- target grey value
-                    obj.cam_settings.src.ShutterMode = 'Auto';
-                    obj.cam_settings.src.Shutter = min((1000/obj.aq_settings.rate) - obj.aq_settings.exposure_gap, 52); %52 is the maximum exposure time on the Blackfly
+                    obj.cam_settings.src.ExposureMode = 'Off'; % <- target grey value
                     obj.cam_settings.src.ShutterMode = 'Manual';
+                    max_constraint = propinfo(obj.cam_settings.src,'Shutter');
+                    max_constraint = max_constraint.ConstraintValue(2); % This is what the camera things is the max <- It's all LIES but I don't know how to change this rignt now
+                    obj.cam_settings.src.Shutter = min((1000/obj.aq_settings.rate) - obj.aq_settings.exposure_gap, max_constraint);
+                    %obj.cam_settings.src.ShutterMode = 'Manual';
                     
                     disp(['Exposure set to: ' num2str(obj.cam_settings.src.Shutter) 'ms']);
                     
                     % Some more settings
-                    obj.cam_settings.src.FrameRateMode = 'Off';
                     obj.cam_settings.src.GainMode = 'Manual';
                     obj.cam_settings.src.Gain = 0;
                     obj.cam_settings.src.SharpnessMode = 'Off';
@@ -853,6 +858,16 @@ classdef FIP_acquisition < handle
             % 9 is Acquisition, 1 is empty verb or stop if running
             fwrite(s,9); fwrite(s,1); fgets(s)
 
+        end
+        
+        function Arduino_serial_reader(obj)
+            % This function is called when there are bytes available on the
+            % serial connection between the Arduino and Matlab. It
+            % processes whatever the Arduino has to say.
+            
+            disp('The Arduino says: ');
+            disp(fgets(obj.arduino_settings.serial)); % Just prints the data
+            
         end
         
         function uncloseable(varargin)
