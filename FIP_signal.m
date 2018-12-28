@@ -149,7 +149,6 @@ classdef FIP_signal <handle
             % Updating crop information
             this_FIP_signal.settings.crop_info=cell(this_FIP_signal.np_signals,1);
             
-            
             % Present figure unless supressed by user
             if present_figure
                 this_FIP_signal.present_figure();
@@ -761,8 +760,17 @@ classdef FIP_signal <handle
 
                 % This is where we actually store the data
                 for j=1:number_of_events
-                    [~, index]=min(abs(stamps(j)-input{i}(:,2)));
-                    results(j+1,:,i)=input{i}(index-window:index+window,1);
+                    try
+                        [~, index]=min(abs(stamps(j)-input{i}(:,2)));
+                        results(j+1,:,i)=input{i}(index-window:index+window,1);
+                    catch
+                        warning('Not enough data availble around timestamp.')
+                        disp(['Stamp: ' num2str(stamps(j))])
+                        disp(['Timeline start: ' num2str(min(input{i}(:,2)))])
+                        disp(['Timeline end: ' num2str(max(input{i}(:,2)))])
+                        disp(['Window: ' num2str(window)]);
+                        continue
+                    end
                 end
             end
             
@@ -1832,6 +1840,7 @@ classdef FIP_signal <handle
                     end
                     % Store them in the FIP_signal object and name them
                     this_FIP_signal.import_timestamps(stamps,name);
+                    
                 case 'derive timestamps advanced'
                     % Derive timestamps from input
                     tag=this_FIP_signal.r_mouse_scr.Tag;
@@ -1846,6 +1855,7 @@ classdef FIP_signal <handle
                     name=input{4};
                     % Store them in the FIP_signal object and name them
                     this_FIP_signal.import_timestamps(stamps,name);
+                    
                 case {'peri-event plot 1sec', 'peri-event plot 5sec', 'peri-event plot 10sec'}
                     % Make peri-event data based on scr
                     tag=this_FIP_signal.r_mouse_scr.Tag;

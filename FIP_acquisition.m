@@ -819,7 +819,10 @@ classdef FIP_acquisition < handle
         function arduino_setup(obj)
             % Sets up the arduino
             
-            % The serrial connection
+            % NOTE. In oder tof this to work, the accompanying Arduino code
+            % needs to be loaded on an Arduino. See the notes inside that
+            % Arduino sketch for more info on the serial communication
+            % protocol.
             
             % Open serial connection
             s = obj.arduino_settings.serial;
@@ -834,7 +837,7 @@ classdef FIP_acquisition < handle
             
             % Set framerate
             rate=obj.aq_settings.rate;
-            fwrite(s,2); fwrite(s,rate); fgets(s) %2 is the framerate noun       
+            fwrite(s,2); fwrite(s,rate); fgets(s) %2 is the framerate noun
             
         end
         

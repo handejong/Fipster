@@ -1,3 +1,4 @@
+
 classdef sweepset < handle
     %SWEEPSET creates an object containing a set of sweeps
     %   This class uses abfload (by Harald Hentschke) to load a set of
@@ -16,7 +17,7 @@ classdef sweepset < handle
     %   handle of the object that controls the figure.
     %
     %   INPUTS:
-    %       - 'user_select', ('on'/'off')           | UI for file selection
+    %       - 'user_select'                         | UI for file selection
     %       - 'filename', 'path/filename'           | open selected file
     %       - 'directory', ('on'/'off'/filepath)    | will open all files
     %                                                 in pwd or filepath.
@@ -30,7 +31,7 @@ classdef sweepset < handle
     %
     %   When using the 'other data' option. Please input data in the form
     %   measurements x sweeps x channels. If there is only one channel, the
-    %   first dimension can be omitted. Note that the top row should not be
+    %   3rd dimension can be omitted. Note that the top row should not be
     %   a sweep, but instead a timeline.
     %
     %   Sweepset is part of:
@@ -75,9 +76,26 @@ classdef sweepset < handle
             % Preliminary settings: (will be more later)
             X_data_unset=true; %
             
+            % Check if the user gave any input arguments
+            if isempty(varargin)
+                disp('Incorrect number of input arguments. Either use: ')
+                disp(' ')
+                disp('   >>sweepset(''user_select'');')
+                disp(' ')
+                disp('Or refer to the documentation to see other options.')
+                return
+            end
+            
             % Deal with arguments
-            for i=1:2:nargin
-            Unable_to_read_input=true; %untill proven otherwise
+            skipp_next=false;
+            for i=1:nargin
+               
+                if skipp_next
+                    skipp_next=false;
+                    continue
+                end
+                
+                Unable_to_read_input=true; %untill proven otherwise
             
                 % open input filename
                 if strcmp(varargin{i},'filename')
@@ -87,21 +105,22 @@ classdef sweepset < handle
                     [this_sweepset.data, sampling_interval, this_sweepset.file_header]=abfload(this_sweepset.filepath);
                     this_sweepset.sampling_frequency=10^3/sampling_interval; % The sampling frequency in kHz
                     Unable_to_read_input=false;
+                    skipp_next=true;
                 end
                 
                 % allow the user to select file (trumps input filename)
-                if strcmp(varargin{i},'user_select') && strcmp(varargin{i+1},'on')
+                if strcmp(varargin{i},'user_select')
                     [temp_filename, path] = uigetfile({'*.abf'},'select file','MultiSelect','off');
                     if temp_filename==0
                         delete(this_sweepset)
                         disp('no file selected')
                         return
                     end
-                    filename_path=fullfile(path, temp_filename);
+                    filename_path = fullfile(path, temp_filename);
                     [this_sweepset.data, sampling_interval, this_sweepset.file_header]=abfload(filename_path);
-                    this_sweepset.sampling_frequency=10^3/sampling_interval; % The sampling frequency in kHz
-                    this_sweepset.filename=temp_filename;
-                    Unable_to_read_input=false;
+                    this_sweepset.sampling_frequency = 10^3/sampling_interval; % The sampling frequency in kHz
+                    this_sweepset.filename = temp_filename;
+                    Unable_to_read_input = false;
                 end
                 
                 % Open all .abf files in this directory.
@@ -157,17 +176,17 @@ classdef sweepset < handle
                 end
                 
                 if strcmp(varargin{i},'other data') % importing non-ephys data or in any case data that is allready imported into Matlab.
-                    Unable_to_read_input=false;
-                    data=varargin{i+1};
+                    Unable_to_read_input = false;
+                    data = varargin{i+1};
                    
                     
                     % check how many channels the data has
-                    data_dims=size(data);
+                    data_dims = size(data);
                     
                     if length(data_dims)==2 % 2 dimensions (asume 1 channel)
                         
                         % set the x axis from the top row
-                        this_sweepset.X_data=data(1,:);
+                        this_sweepset.X_data = data(1,:);
                         X_data_unset=false; % Do not reset X_data later (see below)
                     
                         data=data(2:end,:)'; % Transpose
@@ -186,6 +205,10 @@ classdef sweepset < handle
                     % Unit is currently unkown (but can be set externally)
                     this_sweepset.file_header.recChUnits={'other'};
                     this_sweepset.filename='Unnamed';
+                    
+                    % Wrap up
+                    Unable_to_read_input = false;
+                    skipp_next=true;
                 end
                 
                 if Unable_to_read_input
@@ -210,29 +233,29 @@ classdef sweepset < handle
                 % Depending on how the data was imported (see input
                 % arguments above) the X_data (time) might be allready set.
                 % If this is not the case, we will make it now using the
-                % sampling refuency and the length of the YData.
+                % sampling frequency and the length of the YData.
                 this_sweepset.X_data=[0:1/this_sweepset.sampling_frequency:(length(this_sweepset.data)/this_sweepset.sampling_frequency)-(1/this_sweepset.sampling_frequency)];
             end
             
             % The first sweep in channel 1 will initially be the active sweep
-            this_sweepset.current_sweep=1;
-            this_sweepset.current_channel=1;
+            this_sweepset.current_sweep = 1;
+            this_sweepset.current_channel = 1;
             
             % Setting object properties
-            this_sweepset.number_of_sweeps=length(this_sweepset.data(1,1,:));
-            this_sweepset.sweep_selection=true(1,this_sweepset.number_of_sweeps);
-            this_sweepset.settings.baseline_info.start=1;
-            this_sweepset.settings.baseline_info.end=100;
-            this_sweepset.settings.baseline_info.method='standard';
-            this_sweepset.settings.baseline_info.substracted=false;
-            this_sweepset.settings.average_smooth=0;
-            this_sweepset.settings.smoothed=false;
-            this_sweepset.settings.smooth_factor=0;
-            this_sweepset.settings.Z_scores=false;
-            this_sweepset.settings.Z_scores_over_selection=true; % Default
-            this_sweepset.settings.noise_removal.spikes=false;
-            this_sweepset.settings.mouse_release=false;
-            this_sweepset.settings.dragdrop=''; % What is currently being draged
+            this_sweepset.number_of_sweeps = length(this_sweepset.data(1,1,:));
+            this_sweepset.sweep_selection = true(1,this_sweepset.number_of_sweeps);
+            this_sweepset.settings.baseline_info.start = 1;
+            this_sweepset.settings.baseline_info.end = 100;
+            this_sweepset.settings.baseline_info.method = 'standard';
+            this_sweepset.settings.baseline_info.substracted = false;
+            this_sweepset.settings.average_smooth = 0;
+            this_sweepset.settings.smoothed = false;
+            this_sweepset.settings.smooth_factor = 0;
+            this_sweepset.settings.Z_scores = false;
+            this_sweepset.settings.Z_scores_over_selection = true; % Default
+            this_sweepset.settings.noise_removal.spikes = false;
+            this_sweepset.settings.mouse_release = false;
+            this_sweepset.settings.dragdrop = ''; % What is currently being draged
             
             % Set the default baseline to -2000:-50 if that that is within
             % the data.
@@ -530,7 +553,7 @@ classdef sweepset < handle
             subplot(2,1,1)
             results=squeeze(this_sweepset.data(:,c_channel,this_sweepset.sweep_selection))';
             imagesc(results(:,:));
-            title(['Response to: ' this_sweepset.filename])
+            title(['Response to: ' this_sweepset.filename ' - channel: ' num2str(c_channel)])
             
             % Heat plot axis
             set(gca,'XTick',[]);
@@ -663,9 +686,20 @@ classdef sweepset < handle
     methods (Access = private) 
         
         function key_press(this_sweepset, scr, ~)
-        % controls user keyboard input
-        key=double(get(this_sweepset.handles.figure,'CurrentCharacter'));
-        
+            % controls user keyboard input. It uses the char value of the
+            % pressed key. This is terribly old fashioned, because the key
+            % value is actually storred as a char in the event struct.
+            % Should make a new version of this in time.
+            
+            % Get the numeric value of the key.
+            key=double(get(this_sweepset.handles.figure,'CurrentCharacter'));
+            
+            % It is a real key or a modifier?
+            if isempty(key)
+                return
+            end
+            
+            % Which key was pressed?
             switch key
                 case 29  %Right arrow (next sweep)
                     move_sweep(this_sweepset,this_sweepset.current_sweep+1);
