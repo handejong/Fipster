@@ -253,6 +253,7 @@ classdef sweepset < handle
             this_sweepset.settings.smooth_factor = 0;
             this_sweepset.settings.Z_scores = false;
             this_sweepset.settings.Z_scores_over_selection = true; % Default
+            this_sweepset.settings.Z_scores_over_baseline = true; % Default
             this_sweepset.settings.noise_removal.spikes = false;
             this_sweepset.settings.mouse_release = false;
             this_sweepset.settings.dragdrop = ''; % What is currently being draged
@@ -659,6 +660,7 @@ classdef sweepset < handle
             
             % Are we doing Z-scores?
             if this_sweepset.settings.Z_scores
+                
                 % Note that only including selected sweeps for Z-score
                 if this_sweepset.settings.Z_scores_over_selection
                     % Use only selected sweeps to calculate Z-scores
@@ -668,8 +670,22 @@ classdef sweepset < handle
                     % calculate Z-scores.
                     selection=true(1,this_sweepset.number_of_sweeps);
                 end
-                m_mean=mean2(base_data(:,c_channel,selection));
-                m_std=std2(base_data(:,c_channel,selection));
+                
+                % Z score over all data or only over the baseline?
+                if this_sweepset.settings.Z_scores_over_baseline
+                    % Only over the baseline, grab the indexes
+                    [~, start_point]=min(abs(this_sweepset.X_data-this_sweepset.settings.baseline_info.start));
+                    [~, end_point]=min(abs(this_sweepset.X_data-this_sweepset.settings.baseline_info.end));
+                    
+                    % Calculate mean and std only over this interval
+                    m_mean=mean2(base_data(start_point:end_point,c_channel,selection));
+                    m_std=std2(base_data(start_point:end_point,c_channel,selection));
+                else
+                    % over all data
+                     m_mean=mean2(base_data(:,c_channel,selection));
+                     m_std=std2(base_data(:,c_channel,selection));
+                end
+                
                 base_data=base_data-m_mean;
                 base_data=base_data./m_std;   
             end

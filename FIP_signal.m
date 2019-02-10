@@ -246,37 +246,30 @@ classdef FIP_signal <handle
                                 input=questdlg(['Would you like to detrend signal ' num2str(j) '?'],'Detrend?','yes','no','no');
                                 timeline=signal(:,2,j);
                                 if strcmp(input,'yes')
-                                    try
-                                        
-                                        %%%%%
-                                        % TO DO!!! Should be more dynamic
-                                        %%%%%
-                                        
-                                        
-                                        temp_smooth_factor = 1000;
-                                        %this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}=msbackadj(timeline,signal(:,1,j),...
-                                        %    'Showplot',1)
-                                        m_signal =  this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1};
-                                        m_smooth = smooth(this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}, temp_smooth_factor);
-                                        
-                                        % Present the smoothed background
-                                        figure
-                                        plot(m_signal);
-                                        hold on
-                                        plot(m_smooth);
-                                        xlabel('Time (s)'); ylabel('Signal Units');
-                             
-                                        this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1} = m_signal - m_smooth + mean(m_signal);
-                                    catch
-                                        warning('Detrending requires bioinformatix toolbox. Signal is not detrended.')
-                                        this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}=signal(:,1,j);
-                                    end
+                                    %%%%%
+                                    % TO DO!!! Should be more dynamic
+                                    %%%%%
+
+
+                                    temp_smooth_factor = 1000;
+                                    m_signal =  this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1};
+                                    m_smooth = smooth(this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}, temp_smooth_factor);
+
+                                    % Present the smoothed background
+                                    figure
+                                    plot(m_signal);
+                                    hold on
+                                    plot(m_smooth);
+                                    xlabel('Time (s)'); ylabel('Signal Units');
+                                    
+                                    % The actual detrending
+                                    this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1} = m_signal - m_smooth + mean(m_signal);
                                 else
-                                    this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}=signal(:,1,j);
+                                    this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1} = signal(:,1,j);
                                 end
                                 
                                 % No reference signal in this case, so NaN
-                                this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}=NaN;
+                                this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1} = NaN;
                                 
                                 % Set the effective framerate
                                 this_FIP_signal.info.framerate = framerate;
@@ -322,6 +315,11 @@ classdef FIP_signal <handle
                     end
                     disp(['Loaded ' files(i).name])
                     logAI = logAI(:,max(logAI)>1); %only import channels with signal >1mV
+                    
+                    % Deal with timing error in the logAI data
+                    % THIS NEEDS WORK!!
+                    logAI(:,1) =linspace(0,logAI(end,1),length(logAI));
+                    
                     this_FIP_signal.raw_data.logAI = logAI;
                     dims = size(logAI);
                     disp(['Loaded ' num2str(dims(2)) ' analog inputs.']);
@@ -594,11 +592,33 @@ classdef FIP_signal <handle
 
             % Get info from user about conversion and calculate from that
             if strcmp(scr_type,'AI')
-       
+                
+                % Grab the timeline
                 time=this_FIP_signal.logAI(:,1);
-                 
+                
+                % Find pulse on- and offset
                 pulse_start_logic = stamp_logic & ~[0 stamp_logic(1:end-1)];
                 pulse_end_logic = ~stamp_logic & [0 stamp_logic(1:end-1)];
+                
+                % Now check that we only have complete pulses. (It's
+                % possible to have a partial pulse at the end or beginning
+                % of the signal.)
+                first_start_index = find(pulse_start_logic,1);
+                first_end_index = find(pulse_end_logic,1);
+                last_start_index = find(pulse_start_logic,1, 'last');
+                last_end_index = find(pulse_end_logic,1, 'last');
+                
+                % Partial stamp at the beginning of the signal
+                if first_end_index < first_start_index
+                    warning('Partial pulse at the beginning of the signal... ignored.')
+                    pulse_end_logic(first_end_index) = false;
+                end
+                
+                % Partial stamp at the end of the signal
+                if last_end_index < last_start_index
+                    warning('Partial pulse at the end of the signal... ignored.')
+                    pulse_start_logic(last_start_index) = false;
+                end
                 
                 % Check if more than standard input arguments are given
                 if nargin>2
@@ -694,9 +714,6 @@ classdef FIP_signal <handle
             if ~iscell(input)
                 input={input};
             end
-            
-            % THIS IS STUPID
-            %window = 5;
             
             % Basic variables
             number_of_events=length(stamps);
@@ -798,7 +815,7 @@ classdef FIP_signal <handle
             
             
             % Colorlist for the markers
-            colorlist = ['b', 'r', 'g', 'k', 'm', 'y'];
+            colorlist = ['b', 'g', 'r', 'm', 'k', 'y'];
             
             % Check if input is a cell array and if not, put the 1D array
             % in a cell anyway.
@@ -1169,6 +1186,84 @@ classdef FIP_signal <handle
                 j = j+1;
             end
             
+            
+        end
+        
+        function append_data(this_FIP_signal, new_signal, adjust_median)
+            % APPEND_DATA appends the FIP_signal object 'new_signal' to the
+            % this_FIP_signal, but only if the number of signals, logAI
+            % traces and the framerate are the same.
+            
+            % Check if the framerate is the same
+            if new_signal.info.framerate ~= this_FIP_signal.info.framerate
+                error('Unable to append signal, framerate must be the same.')
+            end
+            
+            % Check if the number of signals is the same
+            if new_signal.np_signals ~= this_FIP_signal.np_signals
+                error('Unable to append, must have the same number of signals in each object.')
+            end
+            
+            % Check if the logAI data has the same number of columns
+            if size(new_signal.raw_data.logAI,2) ~= size(this_FIP_signal.raw_data.logAI,2)
+                error('Unable to append, objects have a different number of logAI traces.')
+            end
+            
+            % Check if the user want's to adjust the median signal
+            if nargin==3 && adjust_median
+                adjust_median = true;
+            else
+                adjust_median =false;
+            end
+            
+            % Grab max_time (can only be one value)
+            max_time = max(this_FIP_signal.info.max_time);
+            
+            % But likely the logAI goes even further
+            max_logAI = this_FIP_signal.raw_data.logAI(end,1);
+            max_time = max([max_time, max_logAI])+this_FIP_signal.raw_data.logAI(2,1);
+           
+            
+            % Work on the signals first
+            for i=1:this_FIP_signal.np_signals
+                % Find the median of both signals
+                if adjust_median
+                    median_signal = median(this_FIP_signal.raw_data.sig{i});
+                    median_new_signal = median(new_signal.raw_data.sig{i});
+                    median_difference = median_new_signal - median_signal;
+                else
+                    median_difference = 0;
+                end
+                
+                % Append the signals
+                this_FIP_signal.raw_data.sig{i} = [this_FIP_signal.raw_data.sig{i};...
+                    new_signal.raw_data.sig{i}-median_difference];
+                this_FIP_signal.raw_data.ref{i} = [this_FIP_signal.raw_data.ref{i};...
+                    new_signal.raw_data.ref{i}];
+                
+                % Append the timeline
+                new_timeline = new_signal.raw_data.timeline{i} + max_time;
+                this_FIP_signal.raw_data.timeline{i} = [this_FIP_signal.raw_data.timeline{i};...
+                    new_timeline]; 
+                
+            end
+            
+            % Work on the logAI traces
+            new_logAI = new_signal.raw_data.logAI;
+            new_logAI(:,1) = new_logAI(:,1) + max_time;
+            this_FIP_signal.raw_data.logAI = [this_FIP_signal.raw_data.logAI;...
+                new_logAI];
+            
+            % Update the max_time itself
+            this_FIP_signal.info.max_time = this_FIP_signal.info.max_time + max_time;
+            
+            % Update the plots
+            this_FIP_signal.update_plots;
+            
+            % Update the X limits of both plots
+            x_limits = [0 max(this_FIP_signal.info.max_time)];
+            this_FIP_signal.handles.FIP_plot.XLim = x_limits;
+            this_FIP_signal.handles.logAI_plot.XLim = x_limits;
             
         end
         
@@ -1717,6 +1812,26 @@ classdef FIP_signal <handle
                 'Tag','log_AI',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu(this_FIP_signal.handles.drop_down.logAI,...
+                'Label','subtract mode',...
+                'Tag','log_AI',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu(this_FIP_signal.handles.drop_down.logAI,...
+                'Label','make absolute',...
+                'Tag','log_AI',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu(this_FIP_signal.handles.drop_down.logAI,...
+                'Label', 'scale [0 5]',...
+                'Tag','log_AI',...
+                'Callback',@this_FIP_signal.context_menu)
+            temp_menu=uimenu(this_FIP_signal.handles.drop_down.logAI,...
+                'Label','smooth_Trace');
+            uimenu('Parent',temp_menu,'Tag','data',...
+                'Label','smooth 1 sec',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu('Parent',temp_menu,'Tag','data',...
+                'Label','smooth x sec',...
+                'Callback',@this_FIP_signal.context_menu)
+            uimenu(this_FIP_signal.handles.drop_down.logAI,...
                 'Label','delete',...
                 'Tag','log_AI',...
                 'Callback',@this_FIP_signal.context_menu)
@@ -1775,7 +1890,7 @@ classdef FIP_signal <handle
             switch scr.Label
                 
                 case {'smooth 1 sec', 'smooth x sec', 'no smooth'}
-                    this_FIP_signal.apply_smooth(target.Tag(1:5), scr.Label(8));
+                    this_FIP_signal.apply_smooth(target.Tag, scr.Label(8));
                      
                 case {'polyfit 1', 'polyfit 2 (standard)'}
                     this_FIP_signal.settings.fit_405 = scr.Label(1:9);
@@ -1804,6 +1919,25 @@ classdef FIP_signal <handle
                     index=find('.'==target.Tag,1)+1; %after the point is the signal #
                     s_np=str2num(target.Tag(index:end));
                     this_FIP_signal.settings.signal_units{s_np,s_type}=scr.Label;
+                    
+                case 'subtract mode'
+                    AI_np = str2num(target.Tag(4:end))+1;
+                    this_FIP_signal.raw_data.logAI(:,AI_np) =  this_FIP_signal.raw_data.logAI(:,AI_np)...
+                        - mode(this_FIP_signal.raw_data.logAI(:,AI_np));
+                    this_FIP_signal.update_plots;
+                    
+                case 'make absolute'
+                    AI_np = str2num(target.Tag(4:end))+1;
+                    this_FIP_signal.raw_data.logAI(:,AI_np) = abs(this_FIP_signal.raw_data.logAI(:,AI_np));
+                    this_FIP_signal.update_plots;
+                    
+                case 'scale [0 5]'
+                     AI_np = str2num(target.Tag(4:end))+1;
+                     temp = this_FIP_signal.raw_data.logAI(:,AI_np);
+                     temp = temp - min(temp);
+                     temp = temp.*(5/max(temp));
+                     this_FIP_signal.raw_data.logAI(:,AI_np) = temp;
+                     this_FIP_signal.update_plots;
 
                 case 'delete'
                     % delete src of R mouse click
@@ -2203,14 +2337,37 @@ classdef FIP_signal <handle
                 case 't' % comes from no smooth
                     smooth_factor = 1;
                 case 'x' % comes from smooth x sec
-                    smooth_factor = inputdlg('# smooth datapoints');
-                    smooth_factor = str2num(smooth_factor{1});
+                    smooth_factor = inputdlg('# smooth secconds');
+                    smooth_factor = str2num(smooth_factor{1})*this_FIP_signal.info.framerate;
                 otherwise
                     smooth_factor = str2num(smooth_factor)*this_FIP_signal.info.framerate;
             end
             
             % Figure out the target and apply the smooth
-            switch target
+            if strcmp(target(1:2),'AI')
+                
+                % Get the smooth_factor back to a number
+                smooth_factor = smooth_factor/this_FIP_signal.info.framerate;
+                
+                % Find out which AI
+                AI_np=str2num(target(4:end))+1;
+                
+                % Find out the sampling frequency
+                timeline = this_FIP_signal.raw_data.logAI(:,1);
+                rate = length(timeline)/(timeline(end) - timeline(1));
+                smooth_factor = smooth_factor * rate;
+                this_FIP_signal.raw_data.logAI(:,AI_np) = smooth(...
+                    this_FIP_signal.raw_data.logAI(:,AI_np),...
+                    smooth_factor);
+                
+                % update plots
+                this_FIP_signal.update_plots;
+                
+                % finished
+                return
+            end
+                
+            switch target(1:5)
                 case 'sig_4'
                     this_FIP_signal.settings.smooth_405 = smooth_factor;
                 case 'sig_C'
