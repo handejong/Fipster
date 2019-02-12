@@ -5,7 +5,7 @@ Fipster is a set of Matlab scripts for quick analysis of fiber photometry (FIP) 
 
 This will open a GUI where one can select a .mat file containing signal (Calcium depended, CD) and reference (405nm emission) traces. There are currently two supported formats. One is that exported by Fipgui (Deisseroth lab) the other is the .mat files exported by the FIP_aquisition class which is also part of this toolbox. If a LogAI file with the same name is found in the same folder, this file will be imported as well.
 
-# Example work flow
+# Example workflow
 Fipster uses a GUI that should be relatively straightforward. The main component, 'FIP_signal' is a Matlab class and supports dot notation for access to non-private properties and methods. This is an example of a standard work flow to obtain time-locked (peri-event) plots of FIP signal.
 
 1. Import signal
