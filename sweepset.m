@@ -680,6 +680,12 @@ classdef sweepset < handle
                     % Calculate mean and std only over this interval
                     m_mean=mean2(base_data(start_point:end_point,c_channel,selection));
                     m_std=std2(base_data(start_point:end_point,c_channel,selection));
+                    
+                    % It is also possible to instead use the original data
+                    % to calculate the std for the Z-score. This is
+                    % probably better, as using only the baseline window to
+                    % calculate std artificially inflates the effect size.
+                    %m_std = std2(this_sweepset.original_data(start_point:end_point,c_channel,selection));
                 else
                     % over all data
                      m_mean=mean2(base_data(:,c_channel,selection));

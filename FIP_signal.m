@@ -71,20 +71,22 @@ classdef FIP_signal <handle
             % Constructor
             
             % Default variables (can be changed by input arguments)
-            present_figure=true;
-            this_FIP_signal.mouse_click=false;
-            this_FIP_signal.raw_signal=true;
-            this_FIP_signal.AI_plots=true;
-            this_FIP_signal.c_time=0;
+            present_figure = true;
+            this_FIP_signal.mouse_click = false;
+            this_FIP_signal.raw_signal = true;
+            this_FIP_signal.AI_plots = true;
+            this_FIP_signal.c_time = 0;
             
             % Populate settings (can be changed by input arguments)
-            settings.time_offset=0;
-            settings.smooth_405=1;
-            settings.smooth_CD=1;
-            settings.smooth_data=1;
-            settings.fit_405='polyfit 2';
-            settings.sw_size=40; %(s) Sliding window size if used for 405 fit (Data points)
-            this_FIP_signal.settings=settings;
+            settings.time_offset = 0;
+            settings.smooth_405 = 1;
+            settings.smooth_CD = 1;
+            settings.smooth_data = 1;
+            settings.fit_405 = 'polyfit 2';
+            settings.correct_using_405nm = true;
+            settings.sw_size = 40; %(s) Sliding window size if used for 405 fit (Data points)
+            settings.default_detrend = false; % Auto detrend (bleaching) using rolling average
+            this_FIP_signal.settings = settings;
             
             % Dealing with input arguments
             skipp_next=false;
@@ -99,11 +101,16 @@ classdef FIP_signal <handle
                             end
                             
                             % find the file and open it
-                            path=which(varargin{i+1});
-                            path=path(1:end-length(varargin{i+1}));      
-                            this_FIP_signal.load_file(varargin{i+1},path);
-                            skipp_next=true;
-                            data_loaded=true;
+                            temp = dir(varargin{i+1});
+                            
+                            % Error handeling
+                            if isempty(temp)
+                                error(['Unable to locate the file: ' varargin{i+1}])
+                            end
+                            
+                            this_FIP_signal.load_file(temp.name, [temp.folder '/']);
+                            skipp_next = true;
+                            data_loaded = true;
                         
                         case 'User input'
                             % Check if there is not allready data loaded
@@ -126,6 +133,11 @@ classdef FIP_signal <handle
                             % Do not present a figure
                             present_figure=false;
                             
+                        case 'detrend'
+                            % Detrend data using moving average
+                            this_FIP_signal.settings.default_detrend = true;
+                            disp('Signals detrended by default')
+                            
                         otherwise
                             % Unrecognized input
                             warning(['input ' varargin{i} ' not recognized.'])
@@ -147,7 +159,7 @@ classdef FIP_signal <handle
             end
            
             % Updating crop information
-            this_FIP_signal.settings.crop_info=cell(this_FIP_signal.np_signals,1);
+            this_FIP_signal.settings.crop_info = cell(this_FIP_signal.np_signals,1);
             
             % Present figure unless supressed by user
             if present_figure
@@ -167,8 +179,8 @@ classdef FIP_signal <handle
             % Check the filetype
             switch filename(end-3:end)
                 case '.mat' % it's a .mat file from FIPgui or FIP_aquisition
-                    load([path filename])
-                    
+                    load([path filename]) % Bad form, but good for now.
+                    disp(['Loading file: ' path filename]);
                 case '.csv' % it's a .csv file, probably from Neurophotometrics
                     
                     % This warning is there because I don't know how
@@ -220,7 +232,7 @@ classdef FIP_signal <handle
                     case 'signal' % Source is the FIP_acquisition, part of Fipster
                         for j=1:length(signal(1,1,:))
                             % Note these have a timeline. Timeline for ref
-                            % and signal is probably not allighned (they
+                            % and signal is probably not alligned (they
                             % are not taken at the same time) so data will
                             % have to be interpolated.
                             
@@ -243,7 +255,15 @@ classdef FIP_signal <handle
                         
                             catch
                                 disp('Importing single-channel recording.')
-                                input=questdlg(['Would you like to detrend signal ' num2str(j) '?'],'Detrend?','yes','no','no');
+                                
+                                % Should we detrend the signal?
+                                if ~this_FIP_signal.settings.default_detrend % no default detrend, so ask the user
+                                    input=questdlg(['Would you like to detrend signal ' num2str(j) '?'],'Detrend?','yes','no','no');
+                                else
+                                    input = 'yes';
+                                end
+                                
+                                % Apply detrending or not
                                 timeline=signal(:,2,j);
                                 if strcmp(input,'yes')
                                     %%%%%
@@ -273,6 +293,9 @@ classdef FIP_signal <handle
                                 
                                 % Set the effective framerate
                                 this_FIP_signal.info.framerate = framerate;
+                                
+                                % Do not normalize using 405nm signal
+                                this_FIP_signal.settings.correct_using_405nm = false;
                             end
 
                             % include timeline and count signals
@@ -795,7 +818,7 @@ classdef FIP_signal <handle
             PE_plot=sweepset('other data',results);
         end
         
-        function [plot_handle, results] = peri_event_plot_stamps(~, input, stamps, window)
+        function [plot_handle, results] = peri_event_plot_stamps(~, input, stamps, varargin)
             % PERI_EVENT_PLOT_STAMPS is similar to peri_event_plot, but
             % instead of FIP data it present a peri-event plot of events
             % stamps. The stamps that will be used as the '0' timepoint are
@@ -814,6 +837,30 @@ classdef FIP_signal <handle
             %       TO DO...
             
             
+            % Default variables
+            nr_of_bins = 50; %50 bins
+            window = 10; %10sec window
+            
+            % Deal with input arguments
+            for i=1:length(varargin)
+                switch varargin{i}
+                    case 'skipp'
+                        % Skipp argument
+                        
+                    case 'window'
+                        window = varargin{i+1};
+                        varargin{i+1} = 'skipp';
+                        
+                    case 'bins'
+                        nr_of_bins = varargin{i+1};
+                        varargin{i+1} = 'skipp';
+                        
+                    otherwise
+                        warning('Unrecognized arguments,... ignored.')
+                end   
+            end
+            
+            
             % Colorlist for the markers
             colorlist = ['b', 'g', 'r', 'm', 'k', 'y'];
             
@@ -829,7 +876,7 @@ classdef FIP_signal <handle
             end
             
             % Figure out an appropriate bin size for the histogram
-            bin_size = 2*window/50;
+            bin_size = 2*window/nr_of_bins;
             timeline = round([-window:bin_size:window-bin_size]+0.5*bin_size,2);
             
             % Make the figure
@@ -837,7 +884,7 @@ classdef FIP_signal <handle
             subplot(2,1,1)
             
             % Make an empty results variable
-            results = zeros(length(stamps) + 1, 50, length(input));
+            results = zeros(length(stamps) + 1, nr_of_bins, length(input));
             
             % for every dataset
             for i = 1:length(input)
@@ -1307,7 +1354,7 @@ classdef FIP_signal <handle
                 
                 % Scroll through the fit methods and apply
                 switch this_FIP_signal.settings.fit_405
-                    case 'unfit'
+                    case {'unfit', 'no fit'}
                         % do not fit 405nm signal
                         sig_405{i}(:,1) = temp;
                         sig_405{i}(:,2) = this_FIP_signal.raw_data.timeline{i};
@@ -1387,8 +1434,10 @@ classdef FIP_signal <handle
             % For every signal
             for i=1:this_FIP_signal.np_signals
                 
-                % Is there a 405nm signal to use for normalization?
-                if length(this_FIP_signal.sig_405{i})~=2
+                % Do we do any normalization with the 405nm signal?
+                % The length(this_FIP_signal.sig_405) checks if there is
+                % a 405nm signal available.
+                if this_FIP_signal.settings.correct_using_405nm && length(this_FIP_signal.sig_405{i})~=2
                     % Substract 405nm signal (produced by sig_405 getter
                     % function) from the calcium-dependend signal (sig_CD).
                     % Add the first value of sig_CD to get an estimation of
@@ -2048,9 +2097,16 @@ classdef FIP_signal <handle
 
                 case {'first peak is 5sec', 'first peak is 15sec'}
                     % Find time of first peak (derive time stamps first)
-                    stamps=this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr);
-                    time_offset=stamps(1)-str2num(scr.Label(end-4:end-3));
+                    stamps = this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr);
+                    time_offset = stamps(1)-str2num(scr.Label(end-4:end-3));
                     this_FIP_signal.set_time_offset(time_offset);
+                    
+                case {'first peak is Xsec'}
+                    % Open a dialog and ask the user what X is, use this to
+                    % offset time.
+                    input = inputdlg("T of the first stamp:", "Give T");
+                    stamps = this_FIP_signal.derive_stamps(this_FIP_signal.r_mouse_scr);
+                    time_offset = stamps(1) - num2str(input{1});
 
                 case {'this stamp is 5sec', 'this stamp is 15sec'}
                     % Align time based on the clicked timestamp
@@ -2058,6 +2114,16 @@ classdef FIP_signal <handle
                     x_loc = this_FIP_signal.mouse_start(1);
                     [~, index] = min(abs(stamps-x_loc));
                     time_offset = stamps(index)-str2num(scr.Label(end-4:end-3));
+                    this_FIP_signal.set_time_offset(time_offset);
+                    
+                case {'this stamp is Xsec'}
+                    % Open a dialog and ask the user what X is, use this to
+                    % offset time.
+                    input = inputdlg("T of this stamp:", "Give T");
+                    stamps = this_FIP_signal.r_mouse_scr.XData;
+                    x_loc = this_FIP_signal.mouse_start(1);
+                    [~, index] = min(abs(stamps-x_loc));
+                    time_offset = stamps(index)-str2num(str2num(input{1}));
                     this_FIP_signal.set_time_offset(time_offset);
 
                 case 'remove noise'

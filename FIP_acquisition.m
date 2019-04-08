@@ -682,6 +682,8 @@ classdef FIP_acquisition < handle
                     
                 case 'pointgrey'
                     % Setup for a point grey camera
+                    
+                    % Trigger setup
                     obj.cam_settings.trigger_type = 'arduino'; %could be DAQ
                     triggerconfig(obj.cam_settings.vid,...
                     'hardware',...
@@ -711,11 +713,13 @@ classdef FIP_acquisition < handle
 
                 case 'pmimaq'
                     % Setup for Photometrics Prime;
+                    
+                    % Trigger setup
                     obj.cam_settings.vid.FramesPerTrigger = 1; 
                     obj.cam_settings.vid.TriggerRepeat = Inf;
+                    obj.cam_settings.src.TriggerMode='Edge Trigger';
                     
                     % Camera settings
-                    obj.cam_settings.src.TriggerMode='Edge Trigger';
                     obj.cam_settings.src.AutoContrast = 'OFF';
                     obj.cam_settings.src.PP0ENABLED = 'NO';
                     obj.cam_settings.src.PP1ENABLED = 'NO';
@@ -730,6 +734,7 @@ classdef FIP_acquisition < handle
                     
                     % Set the exposure
                     obj.cam_settings.src.Exposure = (1000/obj.aq_settings.rate) - obj.aq_settings.exposure_gap;
+                    disp(['Exposure set to: ' num2str(obj.cam_settings.src.Exposure) 'ms']);
                     
                     % set trigger type
                     obj.cam_settings.trigger_type = 'daq'; % use daq to trigger
@@ -819,7 +824,7 @@ classdef FIP_acquisition < handle
         function arduino_setup(obj)
             % Sets up the arduino
             
-            % NOTE. In oder tof this to work, the accompanying Arduino code
+            % NOTE. In oder for this to work, the accompanying Arduino code
             % needs to be loaded on an Arduino. See the notes inside that
             % Arduino sketch for more info on the serial communication
             % protocol.
