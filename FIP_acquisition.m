@@ -51,6 +51,10 @@ classdef FIP_acquisition < handle
             % User will be able to set camera, but pick one for now:
             obj.cam_settings.in_use=1;
             
+            % By default we'll use the daq to trigger the setup and camera,
+            % but user will be able to change that
+            obj.cam_settings.trigger_type = 'daq'; %could be set to arduino
+            
             % Setup DAQ
             try
                 obj.daq_settings.devices = daq.getDevices();
@@ -73,7 +77,7 @@ classdef FIP_acquisition < handle
             try
                 obj.arduino_settings.serial = serial(obj.arduino_settings.port);
             catch
-                disp('No Arduino detected, if you intend to use one, chanege the port under arduino_settings.')
+                disp('No Arduino detected, if you intend to use one, change the port under arduino_settings.')
             end
             
             % Populate acquisition settings
@@ -301,7 +305,7 @@ classdef FIP_acquisition < handle
             end
             
             
-            % Start the arduino if used as a camera trigger
+            % Start the arduino if used as a camera/LED trigger
             if strcmp(obj.cam_settings.trigger_type, 'arduino')
                 obj.arduino_setup();
                 obj.arduino_toggle();
@@ -320,7 +324,7 @@ classdef FIP_acquisition < handle
             %%%%%%%%%%%%%%%%%%%%%% Acquisition loop %%%%%%%%%%%%%%%%%%%%%%%
             should_be_time = 0;
             start_time = tic;
-            error_counter=0;
+            error_counter = 0;
             analysis_time_timer = tic; % only the first time
             while(stop_button.Value == 0)
               
@@ -335,7 +339,7 @@ classdef FIP_acquisition < handle
                     ref=[ref; zeros(size(ref))];
                 end
                 
-                % Get analysis time (loop starte below acquisition)
+                % Get analysis time (loop starts below acquisition)
                 analysis_time = toc( analysis_time_timer );
                 
                 % Start acquisition timer
@@ -355,6 +359,7 @@ classdef FIP_acquisition < handle
                             disp('No frames available in camera memory.')
                             stop_button.Value = 1;
                         end
+                        
                     case 'arduino'
                         try
                             [img, time, metadata] = getdata(obj.cam_settings.vid,1,'uint16');
@@ -362,6 +367,7 @@ classdef FIP_acquisition < handle
                             disp('No frames available in camera memory.')
                             stop_button.Value = 1;
                         end
+                        
                     otherwise
                         error('Incompatible trigger type.')
                 end
@@ -382,6 +388,8 @@ classdef FIP_acquisition < handle
                 % Error handeling, frame number
                 if metadata.FrameNumber~=n_frame
                     warning('Camera and acquisition seem to disagree on frame number')
+                    disp(['The camera says the last frame is: ' num2str(metadata.FrameNumer) '.'])
+                    disp(['The software says the last frame is: ' num2str(n_frame) '.'])    
                 end
                 
                 % This could be the baseline frame
@@ -684,7 +692,6 @@ classdef FIP_acquisition < handle
                     % Setup for a point grey camera
                     
                     % Trigger setup
-                    obj.cam_settings.trigger_type = 'arduino'; %could be DAQ
                     triggerconfig(obj.cam_settings.vid,...
                     'hardware',...
                     'risingEdge',...
@@ -700,7 +707,6 @@ classdef FIP_acquisition < handle
                     max_constraint = propinfo(obj.cam_settings.src,'Shutter');
                     max_constraint = max_constraint.ConstraintValue(2); % This is what the camera things is the max <- It's all LIES but I don't know how to change this rignt now
                     obj.cam_settings.src.Shutter = min((1000/obj.aq_settings.rate) - obj.aq_settings.exposure_gap, max_constraint);
-                    %obj.cam_settings.src.ShutterMode = 'Manual';
                     
                     disp(['Exposure set to: ' num2str(obj.cam_settings.src.Shutter) 'ms']);
                     
@@ -729,15 +735,10 @@ classdef FIP_acquisition < handle
                     obj.cam_settings.src.ClearCycles = 1;
                     obj.cam_settings.src.ClearMode = 'Pre-Exposure';
                     
-                    % Set the ROI
-                    %obj.cam_settings.vid.ROIPosition = [0 0 obj.cam_settings.vid.VideoResolution];
-                    
                     % Set the exposure
                     obj.cam_settings.src.Exposure = (1000/obj.aq_settings.rate) - obj.aq_settings.exposure_gap;
                     disp(['Exposure set to: ' num2str(obj.cam_settings.src.Exposure) 'ms']);
-                    
-                    % set trigger type
-                    obj.cam_settings.trigger_type = 'daq'; % use daq to trigger
+          
                     
                     disp('Setup for Prime.')
                     
@@ -752,7 +753,11 @@ classdef FIP_acquisition < handle
         function daq_setup(obj)
             %DAQ_SETUP sets upt the daq according to the settings
             
-            % TODO error handeling when there is no DAQ available
+            % Check if there is a daq available
+            if strcmp(obj.daq_settings.devices, 'none')
+                disp('No DAQ available for AI recording or triggering of the LEDs and Camera.')
+                return
+            end
             
             % Get device from object
             device = obj.daq_settings.devices(obj.daq_settings.in_use);
@@ -768,7 +773,6 @@ classdef FIP_acquisition < handle
             s.Rate = obj.daq_settings.fs;
             s.IsContinuous = true;
   
-            
             % Setting up the LED triggers (1 or 2 LEDs)
             try %This only works on certain DAQs
                 
