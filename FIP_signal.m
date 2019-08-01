@@ -1,7 +1,7 @@
 classdef FIP_signal <handle
     %FIP_signal Imports fiber photometry signal into FIPster
     %   FIP_signal takes either a .mat file or a .csv file as input (see
-    %   below). If the input files are recognized, it will present a GU
+    %   below). If the input files are recognized, it will present a GUI.
     %   It will attempt to contruct valid fiber photometry signals
     %   from the input for multiple fibers. If one of the data channels is
     %   a signal collected after emission with 405nm light, it will use
@@ -17,14 +17,14 @@ classdef FIP_signal <handle
     %                                   programs (e.g. Fipster).
     %
     %   METHODS
-    %       - import_timestamps         Will import timestamps. Arugments
+    %       - import_timestamps         Will import timestamps. Arguments
     %                                   should be the stamps (array) and
     %                                   the name of the stamps (char).
     %       - peri_event_plot           Will make a peri-event plot using
     %                                   the sweepset class.
     %
-    % FIP_signal is part of FIPster. FIPster is made by Johannes de Jong,
-    % j.w.dejong@berkeley.edu
+    %   FIP_signal is part of FIPster. FIPster is made by Johannes de Jong,
+    %   j.w.dejong@berkeley.edu
 
     
     properties
@@ -133,6 +133,19 @@ classdef FIP_signal <handle
                             % Do not present a figure
                             present_figure=false;
                             
+                        case 'AI only'
+                            % Load only Analog Input data, no signal
+                            temp = dir(varargin{i+1});
+                            
+                            % Error handeling
+                            if isempty(temp)
+                                error(['Unable to locate the file: ' varargin{i+1}])
+                            end
+                            
+                            this_FIP_signal.load_file(temp.name, [temp.folder '/'], 'AI only');
+                            skipp_next = true;
+                            data_loaded = true;
+                            
                         case 'detrend'
                             % Detrend data using moving average
                             this_FIP_signal.settings.default_detrend = true;
@@ -172,6 +185,7 @@ classdef FIP_signal <handle
         
         function load_file(this_FIP_signal, filename, path)
             % Will load a .mat or .csv file into the FIP_signal object.
+            
             
             % So far we have imported 0 signals.
             this_FIP_signal.np_signals = 0;
@@ -270,7 +284,7 @@ classdef FIP_signal <handle
                                     % TO DO!!! Should be more dynamic
                                     %%%%%
 
-
+                                    %1000 seems to work
                                     temp_smooth_factor = 1000;
                                     m_signal =  this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1};
                                     m_smooth = smooth(this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}, temp_smooth_factor);
@@ -900,18 +914,16 @@ classdef FIP_signal <handle
                     % difference
                     temp_data = input{i} - stamps(j-1);
                     
-                    
                     % for every bin
                     for k = 1:length(timeline)
                         
                         % Collect results
                         % note the biger-or-equal on one side, vs smaller
                         % on the other side
-                        results(j,k,i) = sum(temp_data>=timeline(k)-0.5*bin_size & temp_data<timeline(k)+0.5*bin_size);
+                        results(j,k,i) = sum(temp_data>timeline(k)-0.5*bin_size & temp_data<=timeline(k)+0.5*bin_size);
 
                     end
-                    
-                                            
+                                          
                     % Plot the events
                     super_temp = temp_data(temp_data>= -window & temp_data< window);
                     plot(super_temp,ones(length(super_temp),1)*j,'.',...
@@ -927,17 +939,20 @@ classdef FIP_signal <handle
             set(gca,'Ydir','reverse')
             xlim([-window, window])
             
-            
             % Plot the histogram below
             subplot(2,1,2)
             results(2:end,:,:)=results(2:end,:,:)./bin_size;
             for i = 1:length(input)
                 temp_results = results(2:end,:,i);
                 sem_results=std(temp_results)./sqrt(length(stamps));
-                fill([timeline';flipud(timeline')],[mean(temp_results)'-sem_results';flipud(mean(temp_results)'+sem_results')],[0 0 1],...
-                    'linestyle','none',...
-                    'FaceAlpha',0.1,...
-                    'FaceColor',colorlist(i));
+                try % this might fail if there is only 1 timestamp
+                    fill([timeline';flipud(timeline')],[mean(temp_results)'-sem_results';flipud(mean(temp_results)'+sem_results')],[0 0 1],...
+                        'linestyle','none',...
+                        'FaceAlpha',0.1,...
+                        'FaceColor',colorlist(i));
+                catch
+                    % do nothing, just skipp it.
+                end
                 hold on
                 plot(timeline, mean(temp_results),'Color',colorlist(i)')
             end
