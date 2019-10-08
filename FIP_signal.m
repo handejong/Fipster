@@ -281,13 +281,72 @@ classdef FIP_signal <handle
                                 timeline=signal(:,2,j);
                                 if strcmp(input,'yes')
                                     %%%%%
-                                    % TO DO!!! Should be more dynamic
+                                    % TO DO!!! NEEDS ANOTATION
                                     %%%%%
 
-                                    %1000 seems to work
-                                    temp_smooth_factor = 1000;
                                     m_signal =  this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1};
-                                    m_smooth = smooth(this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}, temp_smooth_factor);
+                                    
+                                    % Load the default bleaching signal
+                                    load('mean_bleaching.mat','mean_signal');
+                                    
+                                    % HAVE TO ADAPT MEAN_SIGNAL FOR
+                                    % SAMPLING RATE
+                                    
+                                    % Make the signals the same length
+                                    if length(m_signal)>length(mean_signal)
+                                        m_signal_temp = m_signal(1:length(mean_signal));
+                                    else
+                                        m_signal_temp = m_signal;
+                                        mean_signal = mean_signal(1:length(m_signal));
+                                    end
+                                   
+                                    % Fit those together
+                                    [p, ~, mu] = polyfit(mean_signal, m_signal_temp, 4);
+                                    m_smooth = polyval(p, mean_signal, [], mu);
+                                    m_smooth = smooth(m_signal, 1000);
+                                    
+                                    % It's basically linear after this
+                                    % long, so we'll go with that
+                                    if length(m_smooth) < length(m_signal)
+                                        min_value = mean(m_signal(end-10:end));
+                                        difference = length(m_signal) - length(m_smooth);
+                                        filler = linspace(m_smooth(end), min_value, difference)';
+                                        m_smooth = [m_smooth; filler];
+                                    end
+                                    
+                                    % Deal with the first 50 datapoints
+                                    m_smooth(1:50) = smooth(m_signal(1:50), 10);
+                                        
+                                    %m_smooth = smooth(m_signal, 1000);
+                                    
+%                                     changes = zeros(size(m_signal));
+
+%                                     %m_smooth = smooth(this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}, temp_smooth_factor);
+%                                     m_smooth = smooth(m_signal, 25);
+%                                     for i=2:length(m_smooth)
+%                                         m_smooth(i) = min(m_smooth(i-1), m_smooth(i));
+%                                     end
+%                                     changes = [m_smooth(1:end-1) - m_smooth(2:end)]~=0;
+%                                     
+%                                     last_end = 0;
+%                                     for block = 1:10
+%                                         start = last_end+1;
+%                                         last_end = round(((length(changes)/10) * block));
+%                                         
+%                                         if last_end >length(X); last_end = lengt(X); end
+%                                         
+%                                         X_temp = X(start:last_end);
+%                                         m_smooth_temp = m_smooth(start:last_end);
+%                                         
+%                                         nr_sample_points = max(round(sum(changes(start:last_end))/10), 3);
+%                                         
+%                                         indexer = round(linspace(1, length(X_temp), nr_sample_points));
+%                                         m_smooth(start:last_end) = interp1(X_temp(indexer), m_smooth_temp(indexer), X_temp);
+%                                     end
+                                    
+%                                     indexer = round(linspace(1, X(end), nr_sample_points));
+%                                     m_smooth = interp1(X(indexer), m_smooth(indexer), X)';
+%                                    
 
                                     % Present the smoothed background
                                     figure
@@ -375,6 +434,9 @@ classdef FIP_signal <handle
                 end
             end
             
+            % Store the filename
+            this_FIP_signal.info.filename = filename;
+            
             % Populate object info (Note: of the raw data!)
             for i=1:this_FIP_signal.np_signals
                 this_FIP_signal.info.signal_units{i,1} = 'F';    %for signals    
@@ -393,7 +455,8 @@ classdef FIP_signal <handle
             % all the context menus.
             
             % Present main figure
-            this_FIP_signal.handles.main_figure=figure('name','FIP signals',...
+            this_FIP_signal.handles.main_figure=figure(...
+                'name',this_FIP_signal.info.filename,...
                 'WindowKeyPressFcn',@this_FIP_signal.key_press,...
                 'WindowKeyReleaseFcn',@this_FIP_signal.key_release,...
                 'Tag','main_figure',...
@@ -1918,6 +1981,10 @@ classdef FIP_signal <handle
                 'Label','peri-event plot 10sec',...
                 'Tag','times_stamps',...
                 'Callback',@this_FIP_signal.context_menu)
+            uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
+                'Label','peri-event plot Xsec',...
+                'Tag','times_stamps',...
+                'Callback',@this_FIP_signal.context_menu)
             temp_menu=uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
                 'Label','use for time allignment');
             uimenu('Parent',temp_menu,'Label','this stamp is 5sec',...
@@ -2054,7 +2121,7 @@ classdef FIP_signal <handle
                     % Store them in the FIP_signal object and name them
                     this_FIP_signal.import_timestamps(stamps,name);
                     
-                case {'peri-event plot 1sec', 'peri-event plot 5sec', 'peri-event plot 10sec'}
+                case {'peri-event plot 1sec', 'peri-event plot 5sec', 'peri-event plot 10sec', 'peri-event plot Xsec'}
                     % Make peri-event data based on scr
                     tag=this_FIP_signal.r_mouse_scr.Tag;
                     if strcmp(tag(1:4),'stam') %User clicked on stamps
@@ -2096,8 +2163,12 @@ classdef FIP_signal <handle
                         m_window = 1;
                     elseif strcmp(scr.Label,'peri-event plot 5sec')
                         m_window = 5;
-                    else
+                    elseif strcmp(scr.Label,'peri-event plot 10sec')
                         m_window = 10;
+                    else
+                        input_2 = inputdlg('Window size (s):');
+                        m_window = str2num(input_2{1});
+                        
                     end
                     test=this_FIP_signal.peri_event_plot(m_data,stamps,m_window);
                     %Set proper y axis and name bar

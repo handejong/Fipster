@@ -515,11 +515,53 @@ classdef FIP_acquisition < handle
             %   camera memory). It is not possible that the aquisition loop
             %   went faster than the camera, because no frames would be
             %   available and the getdata function would fail.
+            %
+            %   Another problem is that the internal clock of the Arduino
+            %   is slightly off. For instance, the Arduino MEGA we are
+            %   currently using is about 0.2% FASTER than the NI card
+            %   (which we assume is perfect). This is a serious delay of
+            %   about 7.2sec every hour. To deal with this, if we use both
+            %   an Arduino and a DAQ (for logAI scoring) we split the camera
+            %   trigger into the DAQ to record exact timetamps of the
+            %   camera trigger. We then collect those timestamps.
+            
+            if strcmp(obj.cam_settings.trigger_type,'arduino')
+                % collumn #4 has the camera triggers
+                trigger_channel = 4;
+                temp_logAI = csvread([obj.filename, '_logAI.csv']);
+                indexer = temp_logAI(:,trigger_channel)>1;
+                indexer2 = [0; indexer(1:end-1)];
+                stamps = temp_logAI(indexer & ~indexer2);
+                
+                % find the average interval between the stamps
+                interval = mean(stamps(2:end)-stamps(1:end-1));
+                
+                % Update the timeline for signal and/or refference. If
+                % there are two channels, the reference channel is the
+                % first picture and just the first stamp.
+                if obj.aq_settings.channels == 2; signal_start = stamps(2)-0.5*interval; end
+                if obj.aq_settings.channels == 1; signal_start = stamps(1)-0.5*interval; end
+                ref_start = stamps(1)-0.5 * interval;
+                
+                % The interval between datapoints is bigger if there are
+                % more channels.
+                interval = interval*obj.aq_settings.channels;
+                
+                % Fill out the correct timeline for each signal.
+                for i=1:obj.aq_settings.fibers
+                    signal(:,2,i)=[signal_start:interval:(length(signal)-1)*interval+signal_start];
+                    ref(:,2,i)=[ref_start:interval:(length(ref)-1)*interval+ref_start];
+                end
+                disp(['Exact timestamps using TTL camera trigger on DAQ collumn: ', num2str(trigger_channel)])
+            end
             
             % The start times are 0.5*interval and 1.5 * interval, because the
             % first trigger is at 0, but the first readout is at
             % T = exposure.
-            if strcmp(obj.cam_settings.trigger_type,'daq') || strcmp(obj.cam_settings.trigger_type,'arduino')
+            
+            % A similar aproach when we used a DAQ to trigger the camera
+            % and LEDs
+            if strcmp(obj.cam_settings.trigger_type,'daq')
                 interval=(1/obj.aq_settings.rate)*obj.aq_settings.channels;
                 if obj.aq_settings.channels == 2; signal_start=0.75 * interval; end
                 if obj.aq_settings.channels == 1; signal_start = 0.5 * interval; end
@@ -529,7 +571,7 @@ classdef FIP_acquisition < handle
                     signal(:,2,i)=[signal_start:interval:length(signal)*interval];
                     ref(:,2,i)=[ref_start:interval:length(ref)*interval];
                 end
-                disp('Exact timestamps using DAQ/Arduino timer.')
+                disp('Exact timestamps using  the DAQ')
             end
             
             % NOTE: the backup data (saved as .csv if requested) contains
