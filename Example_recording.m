@@ -19,7 +19,8 @@ clear all force
 % described in the file FIP_aquisition. To inspect the object, double click
 % on it in the MATLAB workspace.
 
-addpath('Fipster\')
+% NOTE make sure FIP_acquisition and all associated files are on your path.
+% addpath('Fipster\')
 acquisition = FIP_acquisition;
 
 

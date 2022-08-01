@@ -246,7 +246,7 @@ classdef FIP_signal <handle
                     case 'signal' % Source is the FIP_acquisition, part of Fipster
                         for j=1:length(signal(1,1,:))
                             % Note these have a timeline. Timeline for ref
-                            % and signal is probably not alligned (they
+                            % and signal is probably not aligned (they
                             % are not taken at the same time) so data will
                             % have to be interpolated.
                             
@@ -260,7 +260,7 @@ classdef FIP_signal <handle
                                 this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}(1) = this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}(2);
                                 this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}(end) = this_FIP_signal.raw_data.ref{this_FIP_signal.np_signals+1}(end-1);
                                 
-                                disp('Datapoins for the reference interpolated to allign traces')
+                                disp('Datapoins for the reference interpolated to align traces')
                                 
                                 % Setting the framerate (The raw framerate
                                 % is for two channels) this is the
@@ -281,7 +281,13 @@ classdef FIP_signal <handle
                                 timeline=signal(:,2,j);
                                 if strcmp(input,'yes')
                                     %%%%%
-                                    % TO DO!!! NEEDS ANOTATION
+                                    % NOTE. to detrend, FIPSTER will fit
+                                    % a smoothed pre-recorded bleaching
+                                    % signal. This works, but is not ideal.
+                                    % The best bleaching correction is
+                                    % a simultaneously-recorded isobestic
+                                    % control such as 405nm GCamP
+                                    % excitation.
                                     %%%%%
 
                                     m_signal =  this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1};
@@ -316,37 +322,6 @@ classdef FIP_signal <handle
                                     
                                     % Deal with the first 50 datapoints
                                     m_smooth(1:50) = smooth(m_signal(1:50), 10);
-                                        
-                                    %m_smooth = smooth(m_signal, 1000);
-                                    
-%                                     changes = zeros(size(m_signal));
-
-%                                     %m_smooth = smooth(this_FIP_signal.raw_data.sig{this_FIP_signal.np_signals+1}, temp_smooth_factor);
-%                                     m_smooth = smooth(m_signal, 25);
-%                                     for i=2:length(m_smooth)
-%                                         m_smooth(i) = min(m_smooth(i-1), m_smooth(i));
-%                                     end
-%                                     changes = [m_smooth(1:end-1) - m_smooth(2:end)]~=0;
-%                                     
-%                                     last_end = 0;
-%                                     for block = 1:10
-%                                         start = last_end+1;
-%                                         last_end = round(((length(changes)/10) * block));
-%                                         
-%                                         if last_end >length(X); last_end = lengt(X); end
-%                                         
-%                                         X_temp = X(start:last_end);
-%                                         m_smooth_temp = m_smooth(start:last_end);
-%                                         
-%                                         nr_sample_points = max(round(sum(changes(start:last_end))/10), 3);
-%                                         
-%                                         indexer = round(linspace(1, length(X_temp), nr_sample_points));
-%                                         m_smooth(start:last_end) = interp1(X_temp(indexer), m_smooth_temp(indexer), X_temp);
-%                                     end
-                                    
-%                                     indexer = round(linspace(1, X(end), nr_sample_points));
-%                                     m_smooth = interp1(X(indexer), m_smooth(indexer), X)';
-%                                    
 
                                     % Present the smoothed background
                                     figure
@@ -1613,163 +1588,149 @@ classdef FIP_signal <handle
                 this_FIP_signal.logAI;
                 return
             end
-            
-            % I think I can remove this now
-%             type='standard';
-%             n_arg=nargin;
-%             if n_arg>1
-%                 for i=1:(n_arg-1)
-%                     if ischar(varargin{i}) && strcmp(varargin{i},'type')
-%                         type=varargin{i+1};
-%                         break
-%                     end
-%                 end
-%             end
-            
-%             switch type % This one goes all the way down
-%                 case 'standard'
-                    % Run getter functions once
-                    m_sig_CD=this_FIP_signal.sig_CD;
-                    m_sig_405=this_FIP_signal.sig_405;
-                    m_data=this_FIP_signal.data;
-                    logAI_plot=this_FIP_signal.logAI; 
 
-                    % Update plot if the figure exists
-                    if sum(this_FIP_signal.fibers_shown)==0
-                        use_current=true;
-                    else
-                        use_current=false;
-                    end
+            % Run getter functions once
+            m_sig_CD=this_FIP_signal.sig_CD;
+            m_sig_405=this_FIP_signal.sig_405;
+            m_data=this_FIP_signal.data;
+            logAI_plot=this_FIP_signal.logAI; 
 
-                    % Check if all signals have same ylabel or not
-                    same_y_label.raw=true;
-                    same_y_label.data=true;
-                    for j=2:this_FIP_signal.np_signals
-                        if  ~strcmp(this_FIP_signal.settings.signal_units{j,1}, ...
-                                this_FIP_signal.settings.signal_units{j-1,1})
-                            same_y_label.raw=false;
-                        end
-                        if  ~strcmp(this_FIP_signal.settings.signal_units{j,2}, ...
-                                this_FIP_signal.settings.signal_units{j-1,2})
-                            same_y_label.data=false;
-                        end
-                    end
-                    
-                    % Figure out which signals should be shown
-                    for i=1:this_FIP_signal.np_signals
-                        if (use_current && i==this_FIP_signal.c_signal) || this_FIP_signal.fibers_shown(i)
-                            visibility='on';
-                        else
-                            visibility='off';
-                        end
-                        
-                        % Show raw signal or analysed data?
-                        if this_FIP_signal.raw_signal
-                            set(this_FIP_signal.handles.sig_CD{i},...
-                                'Visible',visibility,...
-                                'XData',m_sig_CD{i}(:,2),...
-                                'YData',m_sig_CD{i}(:,1));
-                            set(this_FIP_signal.handles.sig_405{i},...
-                                'Visible',visibility,...
-                                'XData',m_sig_405{i}(:,2),...
-                                'YData',m_sig_405{i}(:,1));
-                            set(this_FIP_signal.handles.data{i},...
-                               'Visible','off',...
-                               'XData',m_data{i}(:,2),...
-                               'YData',m_data{i}(:,1));
+            % Update plot if the figure exists
+            if sum(this_FIP_signal.fibers_shown)==0
+                use_current=true;
+            else
+                use_current=false;
+            end
 
-                           % Ylabel
-                           if use_current || same_y_label.raw
-                               this_FIP_signal.handles.ylabel.String=...
-                                   this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,1};
-                           else
-                               this_FIP_signal.handles.ylabel.String='mixed signals'; 
-                           end
-                           
-                        else % Aha! Show normalized trace (data) instead.
-                            set(this_FIP_signal.handles.sig_CD{i},...
-                                'Visible','off',...
-                                'XData',m_sig_CD{i}(:,2),...
-                                'YData',m_sig_CD{i}(:,1));
-                            set(this_FIP_signal.handles.sig_405{i},...
-                                'Visible','off',...
-                                'XData',m_sig_405{i}(:,2),...
-                                'YData',m_sig_405{i}(:,1));
-                            set(this_FIP_signal.handles.data{i},...
-                               'Visible',visibility,...
-                               'XData',m_data{i}(:,2),...
-                               'YData',m_data{i}(:,1));
-                           
-                           % Ylabel
-                           if use_current || same_y_label.data
-                               this_FIP_signal.handles.ylabel.String=...
-                                   this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,2};
-                           else
-                               this_FIP_signal.handles.ylabel.String='mixed signals'; 
-                           end     
-                        end      
-                    end
+            % Check if all signals have same ylabel or not
+            same_y_label.raw=true;
+            same_y_label.data=true;
+            for j=2:this_FIP_signal.np_signals
+                if  ~strcmp(this_FIP_signal.settings.signal_units{j,1}, ...
+                        this_FIP_signal.settings.signal_units{j-1,1})
+                    same_y_label.raw=false;
+                end
+                if  ~strcmp(this_FIP_signal.settings.signal_units{j,2}, ...
+                        this_FIP_signal.settings.signal_units{j-1,2})
+                    same_y_label.data=false;
+                end
+            end
 
-                    % LogAI plot
-                    % The reason for this awkward system rather than just
-                    % making unnecesary plots invisible is that we don't even
-                    % want the LogAI getter function to load all available raw
-                    % data, because there could be huge amounth of data points
-                    % there. This way LogAI only copies selected channels from
-                    % Raw data. (See the getter function for clarification).
-                    % However, if a figure is presented before logAI channels
-                    % are selected all channels are plotted and we are not
-                    % going to move those around either.
-                    dims=size(logAI_plot);
-                    for i=2:dims(2) % first column is the timeline
-                        if this_FIP_signal.log_AI_used(i) % if not deleted and visible
-                            this_FIP_signal.handles.logAI_plots{i-1}.XData=logAI_plot(:,1);
-                            this_FIP_signal.handles.logAI_plots{i-1}.YData=logAI_plot(:,i);
-                            % Only display them if not timestamps display
-                            if this_FIP_signal.AI_plots
-                                this_FIP_signal.handles.logAI_plots{i-1}.Visible='on';
-                            else
-                                this_FIP_signal.handles.logAI_plots{i-1}.Visible='off';
-                            end
-                        end 
-                    end
-                    % All this business with i-1 is because column 1 in the
-                    % logAI property is the timeline.
-                    
-                    % Update time stamps plots
-                    if isfield(this_FIP_signal.handles,'time_stamp_plots') %there are timestamps
-                        for i=1:length(this_FIP_signal.handles.time_stamp_plots)
-                            this_FIP_signal.handles.time_stamp_plots{i}.XData=this_FIP_signal.timestamps{i};
-                            this_FIP_signal.handles.time_stamp_plots{i}.YData=ones(1,length(this_FIP_signal.timestamps{i}))*i;
-                            if this_FIP_signal.AI_plots
-                                this_FIP_signal.handles.time_stamp_plots{i}.Visible='off';
-                                this_FIP_signal.handles.logAI_plot.YLimMode='auto';
-                            else
-                                this_FIP_signal.handles.time_stamp_plots{i}.Visible='on';
-                                this_FIP_signal.handles.logAI_plot.YLim=[0 length(this_FIP_signal.timestamps)+1];
-                            end
-                        end
-                    end
+            % Figure out which signals should be shown
+            for i=1:this_FIP_signal.np_signals
+                if (use_current && i==this_FIP_signal.c_signal) || this_FIP_signal.fibers_shown(i)
+                    visibility='on';
+                else
+                    visibility='off';
+                end
 
-                    % Indicator text
-                    this_FIP_signal.handles.text_1.String=this_FIP_signal.info.names{this_FIP_signal.c_signal};
-                    
-                    % Button strings
-                    % Raw or norm. data button
-                    if this_FIP_signal.raw_signal
-                        this_FIP_signal.handles.norm_data_button.String='norm. data';
-                    else
-                        this_FIP_signal.handles.norm_data_button.String='raw signal';
-                    end
-                    
-                    % Time stamps or log AI button
+                % Show raw signal or analysed data?
+                if this_FIP_signal.raw_signal
+                    set(this_FIP_signal.handles.sig_CD{i},...
+                        'Visible',visibility,...
+                        'XData',m_sig_CD{i}(:,2),...
+                        'YData',m_sig_CD{i}(:,1));
+                    set(this_FIP_signal.handles.sig_405{i},...
+                        'Visible',visibility,...
+                        'XData',m_sig_405{i}(:,2),...
+                        'YData',m_sig_405{i}(:,1));
+                    set(this_FIP_signal.handles.data{i},...
+                       'Visible','off',...
+                       'XData',m_data{i}(:,2),...
+                       'YData',m_data{i}(:,1));
+
+                   % Ylabel
+                   if use_current || same_y_label.raw
+                       this_FIP_signal.handles.ylabel.String=...
+                           this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,1};
+                   else
+                       this_FIP_signal.handles.ylabel.String='mixed signals'; 
+                   end
+
+                else % Aha! Show normalized trace (data) instead.
+                    set(this_FIP_signal.handles.sig_CD{i},...
+                        'Visible','off',...
+                        'XData',m_sig_CD{i}(:,2),...
+                        'YData',m_sig_CD{i}(:,1));
+                    set(this_FIP_signal.handles.sig_405{i},...
+                        'Visible','off',...
+                        'XData',m_sig_405{i}(:,2),...
+                        'YData',m_sig_405{i}(:,1));
+                    set(this_FIP_signal.handles.data{i},...
+                       'Visible',visibility,...
+                       'XData',m_data{i}(:,2),...
+                       'YData',m_data{i}(:,1));
+
+                   % Ylabel
+                   if use_current || same_y_label.data
+                       this_FIP_signal.handles.ylabel.String=...
+                           this_FIP_signal.settings.signal_units{this_FIP_signal.c_signal,2};
+                   else
+                       this_FIP_signal.handles.ylabel.String='mixed signals'; 
+                   end     
+                end      
+            end
+
+            % LogAI plot
+            % The reason for this awkward system rather than just
+            % making unnecesary plots invisible is that we don't even
+            % want the LogAI getter function to load all available raw
+            % data, because there could be huge amounth of data points
+            % there. This way LogAI only copies selected channels from
+            % Raw data. (See the getter function for clarification).
+            % However, if a figure is presented before logAI channels
+            % are selected all channels are plotted and we are not
+            % going to move those around either.
+            dims=size(logAI_plot);
+            for i=2:dims(2) % first column is the timeline
+                if this_FIP_signal.log_AI_used(i) % if not deleted and visible
+                    this_FIP_signal.handles.logAI_plots{i-1}.XData=logAI_plot(:,1);
+                    this_FIP_signal.handles.logAI_plots{i-1}.YData=logAI_plot(:,i);
+                    % Only display them if not timestamps display
                     if this_FIP_signal.AI_plots
-                        this_FIP_signal.handles.time_stamp_button.Value=0;
-                        this_FIP_signal.handles.time_stamp_button.String='Time stamps';
+                        this_FIP_signal.handles.logAI_plots{i-1}.Visible='on';
                     else
-                        this_FIP_signal.handles.time_stamp_button.Value=1;
-                        this_FIP_signal.handles.time_stamp_button.String='LogAI data';
+                        this_FIP_signal.handles.logAI_plots{i-1}.Visible='off';
                     end
+                end 
+            end
+            % All this business with i-1 is because column 1 in the
+            % logAI property is the timeline.
+
+            % Update time stamps plots
+            if isfield(this_FIP_signal.handles,'time_stamp_plots') %there are timestamps
+                for i=1:length(this_FIP_signal.handles.time_stamp_plots)
+                    this_FIP_signal.handles.time_stamp_plots{i}.XData=this_FIP_signal.timestamps{i};
+                    this_FIP_signal.handles.time_stamp_plots{i}.YData=ones(1,length(this_FIP_signal.timestamps{i}))*i;
+                    if this_FIP_signal.AI_plots
+                        this_FIP_signal.handles.time_stamp_plots{i}.Visible='off';
+                        this_FIP_signal.handles.logAI_plot.YLimMode='auto';
+                    else
+                        this_FIP_signal.handles.time_stamp_plots{i}.Visible='on';
+                        this_FIP_signal.handles.logAI_plot.YLim=[0 length(this_FIP_signal.timestamps)+1];
+                    end
+                end
+            end
+
+            % Indicator text
+            this_FIP_signal.handles.text_1.String=this_FIP_signal.info.names{this_FIP_signal.c_signal};
+
+            % Button strings
+            % Raw or norm. data button
+            if this_FIP_signal.raw_signal
+                this_FIP_signal.handles.norm_data_button.String='norm. data';
+            else
+                this_FIP_signal.handles.norm_data_button.String='raw signal';
+            end
+
+            % Time stamps or log AI button
+            if this_FIP_signal.AI_plots
+                this_FIP_signal.handles.time_stamp_button.Value=0;
+                this_FIP_signal.handles.time_stamp_button.String='Time stamps';
+            else
+                this_FIP_signal.handles.time_stamp_button.Value=1;
+                this_FIP_signal.handles.time_stamp_button.String='LogAI data';
+            end
                     
         end
         
@@ -1919,7 +1880,7 @@ classdef FIP_signal <handle
             % logAI plot context menu
             this_FIP_signal.handles.drop_down.logAI=uicontextmenu;
             temp_menu=uimenu(this_FIP_signal.handles.drop_down.logAI,...
-                'Label','use for time allignment');
+                'Label','use for time alignment');
             uimenu('Parent',temp_menu,'Label','first peak is 5sec',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu('Parent',temp_menu,'Label','first peak is 15sec',...
@@ -1986,7 +1947,7 @@ classdef FIP_signal <handle
                 'Tag','times_stamps',...
                 'Callback',@this_FIP_signal.context_menu)
             temp_menu=uimenu(this_FIP_signal.handles.drop_down.time_stamps,...
-                'Label','use for time allignment');
+                'Label','use for time alignment');
             uimenu('Parent',temp_menu,'Label','this stamp is 5sec',...
                 'Callback',@this_FIP_signal.context_menu)
             uimenu('Parent',temp_menu,'Label','this stamp is 15sec',...
@@ -2470,7 +2431,7 @@ classdef FIP_signal <handle
         
         function set_time_offset(this_FIP_signal, time_offset)
             %SET_TIME_OFFSET applies a time offset to the signal. This is
-            %generally used to allign the FIP signal with (for instance)
+            %generally used to align the FIP signal with (for instance)
             %behavioral data or ephys data.
             disp(['Time offset is ' num2str(time_offset) ' sec.'])
             this_FIP_signal.settings.time_offset=time_offset;

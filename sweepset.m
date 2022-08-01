@@ -27,7 +27,7 @@ classdef sweepset < handle
     %                                                 timeline in ms!
     %
     %   The data in the sweepset object are stored in the following
-    %   dimentions: measurments x channels x sweeps.
+    %   dimentions: measurements x channels x sweeps.
     %
     %   When using the 'other data' option. Please input data in the form
     %   measurements x sweeps x channels. If there is only one channel, the
@@ -645,7 +645,7 @@ classdef sweepset < handle
                     base_data=this_sweepset.original_data;
             end
             
-            % Check if any noise should be removed
+            % Check if any noise should be removed (for ephys)
             if this_sweepset.settings.noise_removal.spikes
                 % remove spikes   
             end
@@ -653,9 +653,9 @@ classdef sweepset < handle
             % now checking if the traces are suposed to be smooth
             input=this_sweepset.settings.smooth_factor;
             if this_sweepset.settings.smoothed==true
-                    for i=1:length(this_sweepset.data(1,c_channel,:))
-                        base_data(:,c_channel,i)=smooth(base_data(:,c_channel,i),this_sweepset.sampling_frequency*input);
-                    end
+                for i=1:length(this_sweepset.data(1,c_channel,:))
+                    base_data(:,c_channel,i)=smooth(base_data(:,c_channel,i),this_sweepset.sampling_frequency*input);
+                end
             end
             
             % Are we doing Z-scores?
@@ -678,18 +678,13 @@ classdef sweepset < handle
                     [~, end_point]=min(abs(this_sweepset.X_data-this_sweepset.settings.baseline_info.end));
                     
                     % Calculate mean and std only over this interval
-                    m_mean=mean2(base_data(start_point:end_point,c_channel,selection));
-                    m_std=std2(base_data(start_point:end_point,c_channel,selection));
+                    m_mean=mean(base_data(start_point:end_point,:,selection), 1);
+                    m_std=std(base_data(start_point:end_point,:,selection), 0, 1);
                     
-                    % It is also possible to instead use the original data
-                    % to calculate the std for the Z-score. This is
-                    % probably better, as using only the baseline window to
-                    % calculate std artificially inflates the effect size.
-                    %m_std = std2(this_sweepset.original_data(start_point:end_point,c_channel,selection));
                 else
                     % over all data
-                     m_mean=mean2(base_data(:,c_channel,selection));
-                     m_std=std2(base_data(:,c_channel,selection));
+                     m_mean=mean(base_data(:,:,selection), 1);
+                     m_std=std(base_data(:,:,selection), 0, 1);
                 end
                 
                 base_data=base_data-m_mean;
