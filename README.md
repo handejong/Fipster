@@ -5,6 +5,9 @@ Fipster is a set of Matlab scripts for quick analysis of fiber photometry (FIP) 
 
 This will open a GUI where one can select a .mat file containing signal (Calcium depended, CD) and reference (405nm emission) traces. There are currently two supported formats. One is that exported by Fipgui (Deisseroth lab) the other is the .mat files exported by the FIP_aquisition class which is also part of this toolbox. If a LogAI file with the same name is found in the same folder, this file will be imported as well. Most likely it should be straightforward to process data obtained using the neurophotometrics as well.
 
+[![Example GUI workflow](https://j.gifs.com/z6oYo2.gif)](https://youtu.be/1qFxPjTp09g)
+*Click on the example for an example GUI walk trough on YouTube.*
+
 # Example workflow for data analysis
 Fipster uses a GUI that should be relatively straightforward. The main component, 'FIP_signal' is a Matlab class and supports dot notation for access to non-private properties and methods. This is an example of a standard work flow to obtain time-locked (peri-event) plots of FIP signal.
 
@@ -40,7 +43,7 @@ Fipster uses a GUI that should be relatively straightforward. The main component
 	Finally use 'heatplot' or 'export data' (both in the context menu) to display all selected sweeps. Or export the average trace by clicking 'export average' on the average trace (green).
 
 # Fipster Python
-There is now a Python version of Fipster. The main difference with the MATLAB version is that it is not GUI. To get started, have a look at the file FIP_example.py.
+There is now a Python version of Fipster. The main difference with the MATLAB version is that it is not GUI-based . To get started, have a look at the file FIP_example.py.
 
 ## auROC normalization
 Fipster python allows for auROC normalization, which has a lot of advantaged over z-score normalization for trial-based assays. The idea is from [Cohen et al. Nature 2012](https://www.nature.com/articles/nature10754). Specifically, it is in figure S1 of that paper.
