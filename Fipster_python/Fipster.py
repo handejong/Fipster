@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 import seaborn as sns
-from scipy import signal
+from scipy import signal as scipy_signal
 from sklearn import metrics
 
 
@@ -43,9 +43,9 @@ class FIP_signal:
         # Set the settings.
         self.settings = {
                 'fit ref': 'polyfit',
-                'signal unit': '∆F/F'}
-
-        
+                'rolling window': 1000,
+                'signal unit': '∆F/F',}
+   
         # Deal with input arguments
         for key, value in kwargs.items():
             
@@ -64,6 +64,15 @@ class FIP_signal:
         # Is data imported? If not, open a file browser
         if not self.hasdata:
             print('No data loaded, created empty FIP_signal object.')
+            
+        # Update the user
+        print('\n***** WELCOME TO FIPSTER *****')
+        print('Have a look at self.settings to see how the refference is fit')
+        print('Some things to try:')
+        print("\t'self.plot' - will plot the signal.")
+        print("\t'self.derive_timestamps' - will try to derive stamps from the logAI trace.")
+        print("\t'self.peri_event' - will make a peri-event object.")
+        print("(Where 'self' is whatever you named this object.)\n")
 
                     
     def load_data(self, filename):
@@ -181,16 +190,22 @@ class FIP_signal:
             
             if key == 'fit ref':
                 found_key = True;
-                if not (value == 'polyfit' or value == 'means' or value =='no fit'):
+                options = ['polyfit', 'means', 'no fit', 'rolling polyfit']
+                if not (value in options):
                     raise Exception("{0} is not a valid fit method. pick from: " \
-                                    "\'polyfit\', \'means\', or \'no fit\'.".format(value))
+                                    "\'polyfit\', \'means\', \'rolling polyfit\', or \'no fit\'.".format(value))
                     
             if key == 'signal unit':
                 found_key = True;
                 if not (value == '∆F/F' or value == 'Z-score' or value == 'deltaF'):
                     raise Exception("{0} is not a valid fit method. pick from: " \
                                     "\'∆F/F\', \'deltaF\', or \'Z-score\'.".format(value))
-                    
+             
+            if key == 'rolling window':
+                found_key = True
+                if not (value>1):
+                    print('WARNING: a rolling of <1 is interpreted as a fraction of total.')
+                        
             if not found_key:
                 self.settings.pop(key)
                 raise Exception("{0} is not a valid setting... removed".format(key))
@@ -213,12 +228,12 @@ class FIP_signal:
             # should we detrend? (Apply Savitzky-Golay filter)
             if self.detrend:
                 data[0, :, i] = data[0, :, i] - \
-                signal.savgol_filter(data[0, :, i], 5001, 1) + \
+                scipy_signal.savgol_filter(data[0, :, i], 5001, 1) + \
                 np.min(data[0, :, i])
                 
             # Do we smooth the signal
             if self.smooth[i]:
-                data[0, :, i] = signal.savgol_filter(data[0, :, i], 
+                data[0, :, i] = scipy_signal.savgol_filter(data[0, :, i], 
                                                      self.smooth[i], 1)
                 
             # Do we want Z-scores?
@@ -236,15 +251,29 @@ class FIP_signal:
         return data
     
     
-    def get_ref(self):
+    def get_ref(self, detrend=False):
         # Calculate the fitted reference signal
+        # Normally you'd never want do detrend (e.g. remove bleaching) from the
+        # refference trace, however it might be that you want to make peri-
+        # event plots of the refference trace in which case you'll want to
+        # remove the bleaching trend using detrend=True (the peri-event method
+        # does this automatically).
         
         # Check settings
         self.check_settings()
         
+        # Grab raw data
         ref = self.raw_ref.copy()
         signal = self.signal
         
+        # Do we detrend?(Apply Savitzky-Golay filter)        
+        if detrend:
+            for i in range(0, self.nr_signals):
+                ref[0, :, i] = ref[0, :, i] - \
+                scipy_signal.savgol_filter(ref[0, :, i], 5001, 1) + \
+                np.min(ref[0, :, i])
+               
+        # Go over the 4 methods
         if self.settings['fit ref'] == 'polyfit':
             for i in range(0, self.nr_signals):
                 p = np.polyfit(ref[0,:,i], signal[0, :, i], 1)
@@ -258,10 +287,44 @@ class FIP_signal:
         if self.settings['fit ref'] =='no fit':
             ref = ref
            
-            
+        if self.settings['fit ref'] == 'rolling polyfit':
+            ref = self.rolling_polyfit()
+        
+        # Do we detrend?(Apply Savitzky-Golay filter)        
+        if detrend:
+            for i in range(0, self.nr_signals):
+                ref[0, :, i] = ref[0, :, i] - \
+                scipy_signal.savgol_filter(ref[0, :, i], 5001, 1) + \
+                np.min(ref[0, :, i])
+                
         return ref
-    
-    
+        
+        
+        
+    def rolling_polyfit(self):
+        # This is just a 1st order polynomal fit, except we execute it on a
+        # rolling interval. This is good for longer recordings or when there
+        # is a shift in signal intensity between the signal and the refference
+        
+        ref = self.raw_ref.copy()
+        signal = self.signal
+
+        # Make the output
+        output = ref.copy()
+        
+        # Apply the fit over an interval of length 'rolling window'
+        window = int(self.settings['rolling window']/2)
+        for i in range(0, self.nr_signals): # For every signal
+            for j in range(ref.shape[1]):
+                start = max([j-window, 0])
+                end = min([j+window, ref.shape[1]-1])
+                p = np.polyfit(ref[0,start:end,i], 
+                               signal[0, start:end, i], 1)
+                output[0, j, i] = ref[0, j, i] * p[0] + p[1]
+        
+        return output   
+
+
     def plot(self, signals = 'all', raw_data = True, timestamps = True):
         # Will plot the requested data
         
@@ -404,9 +467,13 @@ class FIP_signal:
         return output_stamps
     
     
-    def peri_event(self, stamps, window = 10):
+    def peri_event(self, stamps, window = 10, from_ref = False):
         # Will make a peri_event histrogram of all data surounding the stamps
         # The indexer is a bool that indexes all the actual data used
+        #
+        # If you set from_ref = True, it will plot the peri-event traces for
+        # the refference channel instead, which is a good way to check if
+        # your effect is due to light or movement artifacts.
           
         # Make the timeline
         timeline = np.arange(-window, window, 1/self.framerate)
@@ -421,10 +488,10 @@ class FIP_signal:
         original_time = np.zeros([len(stamps), len(timeline), self.nr_signals])
           
         # Grab the data
-        data = self.get_data()
-        
-        # The indexer
-        #indexer = np.zeros([data.shape[1], data.shape[2]]).astype(bool)
+        if from_ref:
+            data = self.get_ref(detrend=True)
+        else:
+            data = self.get_data()
         
         # Is there enough data at the end of the stamp?
         data_cutoff = np.max(stamps) + window
@@ -543,6 +610,9 @@ class Sweepset:
         # Make a figure
         figure, axs = plt.subplots(2, self.nr_signals, tight_layout=False)
         figure.set_size_inches([12, 5])
+
+        # This is important to make this work when there is only one signal
+        axs = axs.reshape((2, self.nr_signals))
         
         # Plot each signal
         for i in range(0, self.nr_signals):
@@ -559,7 +629,6 @@ class Sweepset:
             sns.heatmap(data_hm, cbar_kws = {'orientation': 'horizontal'},
                         ax=axs[0, i], cmap=cmap, xticklabels=False, center=0)
             axs[0, i].set_ylabel('Trial #')   
-            #axs[0, i].set_xticks(X)
             axs[0, i].set_title('Channel {0}'.format(i+1))
             
             # Grab the data to plot the average
