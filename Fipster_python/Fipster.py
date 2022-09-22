@@ -16,6 +16,7 @@ import pandas as pd
 import seaborn as sns
 from scipy import signal as scipy_signal
 from sklearn import metrics
+import warnings
 
 
 class FIP_signal:
@@ -441,7 +442,19 @@ class FIP_signal:
             if starts[-1] > ends[-1]:
                 starts = starts[:-1]
             if not len(starts) == len(ends):
-                print('Unequal number of TTL starts and stops, this is an error!')
+                warnings.warn(f'For stamps {name} there is an unequal number of TTL starts and stops, this is an error!')
+                print('Trying to match stamp starts with stamp ends')
+                new_starts = []
+                new_ends = []
+                for stamp in starts:
+                    try:
+                        new_end = ends[ends>=stamp][0]
+                        new_starts.append(stamp)
+                        new_ends.append(new_end)
+                    except:
+                        pass
+                starts = np.array(new_starts)
+                ends = np.array(new_ends)
             
             # Make the set of stamps
             stamps['start'] = starts
