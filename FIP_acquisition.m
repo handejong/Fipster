@@ -683,6 +683,8 @@ classdef FIP_acquisition < handle
                     supported = true;
                 case 'pointgrey'
                     supported = true;
+                case 'pmimaq_2022b'
+                    supported = true;
                 otherwise
                     supported = false;
             end
@@ -760,7 +762,7 @@ classdef FIP_acquisition < handle
                     
 
                 case 'pmimaq'
-                    % Setup for Photometrics Prime;
+                    % Setup for Photometrics
                     
                     % Trigger setup
                     obj.cam_settings.vid.FramesPerTrigger = 1; 
@@ -783,7 +785,35 @@ classdef FIP_acquisition < handle
           
                     
                     disp('Setup for Prime.')
+
+                case 'pmimaq_2022b'
+                    % Setup for Photometrics Prime 2022
+                    % THEY CHANGED THE SPELLING OF SOME OF THE PARAMETERS.
+                    % WHY?!?!?!
                     
+                    % Trigger setup
+                    obj.cam_settings.vid.FramesPerTrigger = 1; 
+                    obj.cam_settings.vid.TriggerRepeat = Inf;
+                    obj.cam_settings.src.TriggerMode='Edge Trigger';
+                    
+                    % Camera settings
+                    triggerconfig(obj.cam_settings.vid, 'hardware')
+                    obj.cam_settings.src.AutoContrast = 'OFF';
+                    obj.cam_settings.src.PP_0_Enabled = 0;
+                    obj.cam_settings.src.PP_1_Enabled = 0;
+                    obj.cam_settings.src.PP_2_Enabled = 0;
+                    obj.cam_settings.src.PP_3_Enabled = 0;
+                    obj.cam_settings.src.PP_4_Enabled = 0;
+                    obj.cam_settings.src.ClearCycles = 1;
+                    obj.cam_settings.src.ClearMode = 'Pre-Exposure';
+                    
+                    % Set the exposure
+                    obj.cam_settings.src.Exposure = (1000/obj.aq_settings.rate) - obj.aq_settings.exposure_gap;
+                    disp(['Exposure set to: ' num2str(obj.cam_settings.src.Exposure) 'ms']);
+          
+                    
+                    disp('Setup for Prime (2022 adapter).')
+
                 otherwise
                     error([option.adaptors ' currently not suported. See cam_setup method.'])
             end
