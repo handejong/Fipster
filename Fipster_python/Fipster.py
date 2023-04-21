@@ -3,6 +3,10 @@
 """
 Created on Tue Nov 12 14:41:27 2019
 
+
+
+
+
 @author: handejong
 """
 
@@ -253,12 +257,14 @@ class FIP_signal:
     
     
     def get_ref(self, detrend=False):
-        # Calculate the fitted reference signal
-        # Normally you'd never want do detrend (e.g. remove bleaching) from the
-        # refference trace, however it might be that you want to make peri-
-        # event plots of the refference trace in which case you'll want to
-        # remove the bleaching trend using detrend=True (the peri-event method
-        # does this automatically).
+        """
+        Calculate the fitted reference signal
+        Normally you'd never want do detrend (e.g. remove bleaching) from the
+        refference trace, however it might be that you want to make peri-
+        event plots of the refference trace in which case you'll want to
+        remove the bleaching trend using detrend=True (the peri-event method
+        does this automatically).
+        """
         
         # Check settings
         self.check_settings()
@@ -300,12 +306,13 @@ class FIP_signal:
                 
         return ref
         
-        
-        
+              
     def rolling_polyfit(self):
-        # This is just a 1st order polynomal fit, except we execute it on a
-        # rolling interval. This is good for longer recordings or when there
-        # is a shift in signal intensity between the signal and the refference
+        """
+        This is just a 1st order polynomal fit, except we execute it on a
+        rolling interval. This is good for longer recordings or when there
+        is a shift in signal intensity between the signal and the refference
+        """
         
         ref = self.raw_ref.copy()
         signal = self.signal
@@ -327,7 +334,9 @@ class FIP_signal:
 
 
     def plot(self, signals = 'all', raw_data = True, timestamps = True):
-        # Will plot the requested data
+        """
+        Will plot the requested data
+        """
         
         # Error handeling on the input arguments
         if len(self.timestamps)==0:
@@ -384,14 +393,13 @@ class FIP_signal:
             plt.ylabel('Stamp #')    
             plt.xlabel('Time (s)')
             plt.legend()
-        
-        # Return the figure handle
-        return figure
     
     
     def derive_timestamps(self, TTL = 'all', names = 'default', min_length = 0,\
-                          max_length = 9999):
-        # Derive timestamps from the logAI signals
+                          max_length = 9999, threshold = 1):
+        """
+        Derive timestamps from the logAI signals
+        """
         
         # Output variable
         output_stamps = {}
@@ -428,7 +436,6 @@ class FIP_signal:
             signal = self.logAI[col].values
             
             # Grab TTL_high timepoins
-            threshold = 1
             TTL_high = signal>threshold
             dif = np.append([0], np.diff(TTL_high.astype(int)))
             
@@ -481,12 +488,14 @@ class FIP_signal:
     
     
     def peri_event(self, stamps, window = 10, from_ref = False):
-        # Will make a peri_event histrogram of all data surounding the stamps
-        # The indexer is a bool that indexes all the actual data used
-        #
-        # If you set from_ref = True, it will plot the peri-event traces for
-        # the refference channel instead, which is a good way to check if
-        # your effect is due to light or movement artifacts.
+        """
+        Will make a peri_event histrogram of all data surounding the stamps
+        The indexer is a bool that indexes all the actual data used
+        
+        If you set from_ref = True, it will plot the peri-event traces for
+        the refference channel instead, which is a good way to check if
+        your effect is due to light or movement artifacts.
+        """
           
         # Make the timeline
         timeline = np.arange(-window, window, 1/self.framerate)
@@ -531,10 +540,55 @@ class FIP_signal:
         new_sweepset = Sweepset(output, timeline, original_time)        
                       
         return new_sweepset
+
+
+    def sync_time(self, fip_time:np.array, external_time:np.array):
+        """
+        Recast the timeline of the FIP signal to align with some external
+        timeline.
+        
+        Note: that sync_time does a simple first-order linear fit so if the 
+        discrepancies in timing between the dataset are more complicated, this
+        method is not usefull. Sync time will keep the framerate constant 
+        throughout the session. 
+        
+
+        Parameters
+        ----------
+        fip_time : NumPy array
+            Set of timestamps taken from the current FIP timeline
+        external_time : NumPy array
+            Corresponding timestamps to fip_time in the external dataset.
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        # Check the input arguments
+        if not len(fip_time) == len(external_time):
+            print('sync_time only works for equal-length time arrays, please see the docstring')
+            return None
+        
+        # Perform the fit
+        p = np.polyfit(fip_time, external_time, 1)
+        print(f'Polynomal parameters: {p}')
+        
+        # Now change the timeline of the signal and the ref
+        for i in range(self.signal.shape[2]):
+            self.signal[1, :, i] = self.signal[1, :, i]*p[0] + p[1]
+            self.raw_ref[1, :, i] = self.raw_ref[1, :, i]*p[0] + p[1]
+        
+        # The LogAI trace
+        self.logAI.loc[:, 'Time'] = self.logAI.Time*p[0] + p[1]
+        
                       
         
 class Sweepset:
-    # ....
+    """
+    ....
+    """
     
     def __init__(self, raw_data, timeline, original_timeline):
         # Constructor

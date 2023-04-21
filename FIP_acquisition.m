@@ -114,7 +114,6 @@ classdef FIP_acquisition < handle
             res=obj.cam_settings.vid.VideoResolution;
             obj.cam_settings.vid.ROIPosition=[0 0 res];
             
-            
             % If neccesary setup daq
             if strcmp(obj.cam_settings.trigger_type, 'daq')
                 obj.daq_setup;
@@ -135,6 +134,7 @@ classdef FIP_acquisition < handle
                 i=0;
                 while i < n_frames
                     i = i + 1;
+                    %temp = getdata(obj.cam_settings.vid, 1, 'uint16');
                     frames(:,:,i) = getdata(obj.cam_settings.vid, 1, 'uint16');
                 end
                 stop(obj.cam_settings.vid);
@@ -685,6 +685,8 @@ classdef FIP_acquisition < handle
                     supported = true;
                 case 'pmimaq_2022b'
                     supported = true;
+                case 'gentl'
+                    supported = true;
                 otherwise
                     supported = false;
             end
@@ -719,9 +721,7 @@ classdef FIP_acquisition < handle
                 disp(['Setting up ' option.devices])
                 disp(['Please run calibration before acquisition.'])
             end
-
-            
-            
+   
             % Figure out the correct settings for supported cameras
             switch option.adaptors
                 case 'macvideo'
@@ -757,9 +757,43 @@ classdef FIP_acquisition < handle
                     % Some more settings
                     obj.cam_settings.src.GainMode = 'Manual';
                     obj.cam_settings.src.Gain = 0;
-                    obj.cam_settings.src.SharpnessMode = 'Off';
-                    obj.cam_settings.src.GammaMode = 'Off';
+                    try
+                        obj.cam_settings.src.SharpnessMode = 'Off';
+                        obj.cam_settings.src.GammaMode = 'Off';
+                    catch
+                        disp('This camera adapter has no Sharpness or Gamma Mode')
+                    end
+
+                case 'gentl'
+                    % Setup for Gentl (generally Spinakker) cameras
                     
+                    % Trigger setup
+                    framesPerTrigger = 1;
+                    numTriggers = Inf;
+                    triggerCondition = "DeviceSpecific";
+                    triggerSource = "DeviceSpecific";
+                    triggerconfig(obj.cam_settings.vid, "hardware", triggerCondition, triggerSource);
+                    obj.cam_settings.vid.FramesPerTrigger = framesPerTrigger;
+                    obj.cam_settings.vid.TriggerRepeat = numTriggers - 1;
+
+                    % More trigger settings
+                    obj.cam_settings.src.TriggerSelector = "FrameStart";
+                    obj.cam_settings.src.TriggerSource = "Line0";
+                    obj.cam_settings.src.TriggerActivation = "RisingEdge";
+                    obj.cam_settings.src.TriggerMode = "on";
+
+                    % Exposure settings
+                    %obj.cam_settings.src.AutoExposureControlLoopDamping = 0;
+                    %obj.cam_settings.src.AutoExposureLightingMode = "Backlight";
+                    obj.cam_settings.src.AutoExposureTargetGreyValueAuto = "Off";
+                    obj.cam_settings.src.DefectCorrectStaticEnable = "False";
+                    obj.cam_settings.src.ExposureAuto = "Off";
+                    obj.cam_settings.src.GainAuto = "Off";
+                    %obj.cam_settings.src.Gamma = 0;
+                    obj.cam_settings.src.GammaEnable = "False";
+                    obj.cam_settings.src.ExposureMode = "Timed";
+                    %obj.cam_settings.src.ExposureTimeAbs = 1000/obj.aq_settings.rate;
+                    obj.cam_settings.src.ExposureTime = (1000000/obj.aq_settings.rate) - (1000*obj.aq_settings.exposure_gap); % NOTE micro-seconds
 
                 case 'pmimaq'
                     % Setup for Photometrics
