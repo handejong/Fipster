@@ -71,13 +71,13 @@ class FIP_signal:
             print('No data loaded, created empty FIP_signal object.')
             
         # Update the user
-        print('\n***** WELCOME TO FIPSTER *****')
-        print('Have a look at self.settings to see how the refference is fit')
-        print('Some things to try:')
-        print("\t'self.plot' - will plot the signal.")
-        print("\t'self.derive_timestamps' - will try to derive stamps from the logAI trace.")
-        print("\t'self.peri_event' - will make a peri-event object.")
-        print("(Where 'self' is whatever you named this object.)\n")
+        # print('\n***** WELCOME TO FIPSTER *****')
+        # print('Have a look at self.settings to see how the refference is fit')
+        # print('Some things to try:')
+        # print("\t'self.plot' - will plot the signal.")
+        # print("\t'self.derive_timestamps' - will try to derive stamps from the logAI trace.")
+        # print("\t'self.peri_event' - will make a peri-event object.")
+        # print("(Where 'self' is whatever you named this object.)\n")
 
                     
     def load_data(self, filename):
@@ -129,20 +129,7 @@ class FIP_signal:
         # Is there an associated logAI file?
         new_filename = filename[0:-4] + '_logAI.csv'
         if os.path.isfile(new_filename):
-            print('Loading: {0}'.format(new_filename))
-            self.logAI = pd.read_csv(new_filename)
-            
-            # Name the columns
-            columns = ['Time']
-            for i in range(1, self.logAI.shape[1]):
-                columns.append('TTL {0}'.format(i))
-            self.logAI.columns = columns   
-            
-            # Remove columns if there is no signal above 1mV
-            for i in range(1, len(columns)):
-                
-                if np.max(self.logAI[columns[i]]) < 1:
-                    self.logAI = self.logAI.drop(columns[i], axis = 1)
+            self.load_logAI(new_filename)
             
         # Finish up
         self.nr_signals = self.signal.shape[2]
@@ -151,7 +138,40 @@ class FIP_signal:
         self.external_signal = [False] * self.signal.shape[2]
         self.smooth = [False] * self.signal.shape[2]
 
+
+    def load_logAI(self, filename):
+        """
+        Load the associated logAI file with the FIP signal.
+
+        The logAI file contains analog input signals collected on the NI Daq during
+        a recording. It is generally sampled at 200Hz (but this can vary). There are
+        some quircks in how Matlab stores timepoints at which logAI data is collected
+        which is annoying and the reason we have to resample.
+
+        """
+        print(f'Loading: {filename}')
+        logAI = pd.read_csv(filename)
         
+        # Name the columns
+        logAI.columns = ['Time'] + [f'TTL {i}' for i in range(1, logAI.shape[1])] 
+        
+        # Remove columns if there is no signal above 1mV
+        indexer = logAI.max(axis=0)>1
+        logAI = logAI.loc[:, indexer].copy()
+
+        # How about that timeline, can we safely resample?
+        sampling_interval = round(logAI['Time'].iloc[-1]/len(logAI['Time']), 7)
+        print('Sampling interval is: {0}ms'.format(sampling_interval*1000))
+        if sampling_interval == 0.005000:
+            logAI.Time = np.linspace(0.005, len(logAI)*0.005, len(logAI))
+            print('...resampled')
+        elif (sampling_interval>0.0049) & (sampling_interval<0.0051):
+            logAI.time = np.linspace(0.005, len(logAI)*0.005, len(logAI))
+            print('...resampled ANYWAY')
+
+        self.logAI = logAI
+
+
     def import_signal(self, new_signal):
         # Import external signal
         
@@ -652,7 +672,7 @@ class Sweepset:
         return data
     
     
-    def make_figure(self, cmap=None):
+    def make_figure(self, cmap=None, xlim = None):
         
         # Deal with the default cmap
         if cmap is None:
