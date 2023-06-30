@@ -95,7 +95,7 @@ class FIP_signal:
         for key, value in data.items():
             
             if key == 'framerate':
-                self.framerate = np.int(value[()])
+                self.framerate = int(value[()])
             
             if key == 'notes':
                 self.notes = value
@@ -521,7 +521,7 @@ class FIP_signal:
         timeline = np.arange(-window, window, 1/self.framerate)
         
         # Adapt the window
-        window = np.int(window*self.framerate)
+        window = int(window*self.framerate)
           
         # Output variable
         output = np.zeros([len(stamps), len(timeline), self.nr_signals])
@@ -673,6 +673,25 @@ class Sweepset:
     
     
     def make_figure(self, cmap=None, xlim = None):
+        """
+        Creates a figure with subplots displaying the data and average traces.
+
+        Parameters:
+            cmap (matplotlib colormap, optional): The colormap to be used for the heatmap. 
+                If not provided, a default colormap is used.
+            xlim (tuple, optional): The x-axis limits for the data display range. 
+                If not provided, the entire range of the data is displayed.
+
+        Returns:
+            Figure handle
+
+        Note:
+            - This function relies on the presence of the following attributes in the object:
+                - self.X: X-axis values for the data
+                - self.nr_signals: Number of signals in the data
+                - self.settings: Dictionary containing various settings, including 'display range' and 'Z-score'
+                - self.get_data(): Method that retrieves the data to be plotted
+        """
         
         # Deal with the default cmap
         if cmap is None:
@@ -739,7 +758,8 @@ class Sweepset:
                 
         # Force plot
         plt.show()
-                
+
+        return figure          
                 
     def get_average(self, channel, sliced = False):
         
