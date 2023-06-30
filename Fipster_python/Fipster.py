@@ -110,7 +110,7 @@ class FIP_signal:
                 self.labels = value
         
         # If there is a ref, divide the framerate by 2
-        if not self.raw_ref==[]:
+        if not len(self.raw_ref)==0:
             self.framerate = self.framerate/2
         else: # If there is no ref, put some zeros and prevent ref fit
             self.raw_ref = np.zeros(self.signal.shape)
