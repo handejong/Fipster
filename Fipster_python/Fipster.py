@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Welcome to Fipster Python. The most important part of this FIP analysis code is the
+FIP_signal python class. You instantiate one like so:
+
+>>> signal = FIP_signal(filename = 'your_filename.mat')
+
+To get an overview of the available methods type:
+
+>>> help(FIP_signal)
+
 Created on Tue Nov 12 14:41:27 2019
-
-
-
-
 
 @author: handejong
 """
@@ -44,8 +49,12 @@ class FIP_signal:
         self.detrend = False
         self.external_signal = []
         self.smooth = []
+
+        # This is just for formatting of the figure
+        self.facecolor = 'w'
+        self.axcolor='k'
         
-        # Set the settings.
+        # Set the settings. (IMPORTANT)
         self.settings = {
                 'fit ref': 'polyfit',
                 'rolling window': 1000,
@@ -69,16 +78,8 @@ class FIP_signal:
         # Is data imported? If not, open a file browser
         if not self.hasdata:
             print('No data loaded, created empty FIP_signal object.')
+            #TODO include filebrowser
             
-        # Update the user
-        # print('\n***** WELCOME TO FIPSTER *****')
-        # print('Have a look at self.settings to see how the refference is fit')
-        # print('Some things to try:')
-        # print("\t'self.plot' - will plot the signal.")
-        # print("\t'self.derive_timestamps' - will try to derive stamps from the logAI trace.")
-        # print("\t'self.peri_event' - will make a peri-event object.")
-        # print("(Where 'self' is whatever you named this object.)\n")
-
                     
     def load_data(self, filename):
         # Load .mat file into the object
@@ -86,29 +87,31 @@ class FIP_signal:
         print('Loading: {0}'.format(filename))
         
         # Try two different ways of importing old and new Matlab files
-        try: 
-            data = loadmat(filename)
-        except:
-            data = h5py.File(filename, mode='r')
+        with h5py.File(filename, mode='r') as data:
               
-        # Unpack individual variables  
-        for key, value in data.items():
-            
-            if key == 'framerate':
-                self.framerate = int(value[()])
-            
-            if key == 'notes':
-                self.notes = value
-            
-            if key == 'signal':
-                self.signal = np.array(value[()])
-            
-            if key == 'ref':
-                self.raw_ref = np.array(value[()])
+            # Unpack individual variables  
+            for key, value in data.items():
                 
-            if key == 'labels':
-                self.labels = value
-        
+                if key == 'framerate':
+                    self.framerate = int(value[()])
+                
+                if key == 'notes':
+                    string_value = [i[0] for i in data[value[0][0]][()]]
+                    self.notes = ''.join(map(lambda x: chr(x), string_value))
+                
+                if key == 'signal':
+                    self.signal = np.array(value[()])
+                
+                if key == 'ref':
+                    self.raw_ref = np.array(value[()])
+                    
+                if key == 'labels':
+                    self.labels = []
+                    for i in range(value.shape[1]):
+                        string_value = [j[0] for j in data[value[0][i]][()]]
+                        label = ''.join(map(lambda x: chr(x), string_value))
+                        self.labels.append(label)
+            
         # If there is a ref, divide the framerate by 2
         if not len(self.raw_ref)==0:
             self.framerate = self.framerate/2
@@ -137,6 +140,11 @@ class FIP_signal:
         self.filename = filename
         self.external_signal = [False] * self.signal.shape[2]
         self.smooth = [False] * self.signal.shape[2]
+
+        # Print recording notes
+        print(' ')
+        print(f'RECORDING NOTES: {self.notes}')
+        print(' ')
 
 
     def load_logAI(self, filename):
@@ -246,7 +254,7 @@ class FIP_signal:
         data = self.signal.copy()
         ref = self.get_ref()
         
-        # Subtract the fitted reference, add the mean vallue
+        # Subtract the fitted reference, add the mean value
         for i in range(0, self.nr_signals):
             data[0, :, i] = data[0, :, i] - ref[0, :, i] + np.mean(ref[0, :, i])
             
@@ -353,9 +361,21 @@ class FIP_signal:
         return output   
 
 
-    def plot(self, signals = 'all', raw_data = True, timestamps = True):
+    def plot(self, signals:list = 'all', raw_data = True, timestamps = True):
         """
-        Will plot the requested data
+        This is the main function to quickly plot all the available data in a
+        Matplotlib figure.
+
+        Parameters:
+        -----------
+        signals : list, tuple or string (if 'all')
+            A list of all signals you want to plot.
+        raw_data: Bool
+            If True, this will plot raw non-normalized data. It will fit the
+            reference to the signal though. You set that separately in "settings".
+        timestamps: Bool
+            You can plot either raw log_AI traces or timestamps. If set to True
+            this will plot timestamps in the bottom plot.
         """
         
         # Error handeling on the input arguments
@@ -367,70 +387,91 @@ class FIP_signal:
             signals = range(0, self.nr_signals)
 
         # Make a figure
-        figure = plt.figure()
-        main_plot = plt.subplot(2,1,1)
-        
-        # Format the figure
-        plt.subplots_adjust(top = 0.95, bottom = 0.1, left = 0.1, right = 0.98, hspace = 0.3)
+        figure, axs = plt.subplots(len(signals)+1, 1, figsize = (16, 3*len(signals)+3), 
+            tight_layout=True, sharex=True, facecolor=self.facecolor)
+        _ = [self._default_formatting(ax) for ax in axs]
         
         # Plot the signals
         if raw_data:
             ref = self.get_ref()
-            for i in signals:
-                plt.plot(self.signal[1, :, i], self.signal[0, :, i], lw = 0.1)
-                plt.plot(ref[1, :, i], ref[0, :, i], lw = 0.1)
-            
-            # Format the plot
-            plt.xlabel('Time (s)')
-            plt.ylabel('Signal (F)')
+            for i, signal_i in enumerate(signals):
+                axs[i].plot(self.signal[1, :, signal_i], self.signal[0, :, signal_i], lw = 0.5,
+                    label = 'signal')
+                if not ref[0, :, signal_i].sum() == 0:
+                    axs[i].plot(ref[1, :, signal_i], ref[0, :, signal_i], lw = 0.5, 
+                        label='ref')
+                axs[i].set_ylabel(f'{self.labels[signal_i]} (F)')
         
         # Plot normalized data instead
         else:
             data = self.get_data()
-            for i in signals:
-                plt.plot(data[1, :, i], data[0, :, i], lw = 0.1)
-                
-            # Format
-            plt.xlabel('Time (s)')
-            plt.ylabel(self.settings['signal unit'])
-        
-        plt.title(self.filename)
-            
+            for i, signal_i in enumerate(signals):
+                axs[i].plot(data[1, :, signal_i], data[0, :, signal_i], lw = 0.5)
+                axs[i].set_ylabel(f"{self.labels[signal_i]} ({self.settings['signal unit']})")
+
+        # Some formatting
+        axs[i].legend(loc = 'upper right')
+
         # Plot the logAI data
-        logAI_plot = plt.subplot(2,1,2, sharex=main_plot)
         if not timestamps:
             for i in range(1, self.logAI.shape[1]):
-                plt.plot(self.logAI.iloc[:, 0], self.logAI.iloc[:, i],\
-                         label = self.logAI.columns[i])
-            plt.ylabel('V (mV)')    
-            plt.xlabel('Time (s)')
-            plt.legend(loc = 'upper right')
+                axs[-1].plot(self.logAI.iloc[:, 0], self.logAI.iloc[:, i],\
+                         label = self.logAI.columns[i], lw=0.5)
+            axs[-1].set_ylabel('AI (mV)')    
         else:
             for i in range(0, len(self.timestamps)):
-                plt.scatter(self.timestamps[i]['start'],\
+                axs[-1].scatter(self.timestamps[i]['start'],\
                             np.ones(self.timestamps[i]['start'].shape)*i,\
                             label = self.timestamps[i]['name'])
-            plt.ylabel('Stamp #')    
-            plt.xlabel('Time (s)')
-            plt.legend()
+            axs[-1].set_ylabel('Stamp #')    
+        axs[-1].set_xlabel('Time (s)')
+        axs[-1].legend(loc = 'upper right')
+
+        # Some formatting
+        figure.suptitle(self.filename)
+
+        return figure, axs
     
     
-    def derive_timestamps(self, TTL = 'all', names = 'default', min_length = 0,\
-                          max_length = 9999, threshold = 1):
+    def derive_timestamps(self, TTL = 'all', names = 'default', min_length = 0,
+                          max_length = 9999, threshold = 1, store_stamps:bool = True):
         """
-        Derive timestamps from the logAI signals
+        DERIVE_TIMESTAMPS converts log AI voltage traces to discrete timestamps.
+
+        Parameters:
+        -----------
+        TTL: Str, int or list of either
+            A list or individual TTL channel.
+        names: Str or list of Str
+            A list of names to be used for the imported pulses
+        min_length: numeric
+            Minimum pulse length (s) to be included. Shorter pulses are ignored.
+        max_length: numeric
+            Maximum pulse length (s) to be included. Longer pulses are ignored.
+        threshold: numeric
+            Threshold (voltage) above which a pulse onset is detected.
+        store_stamps: Bool
+            Controls if the stamps are saved into the FIP_SIGNAL object.
+
+        Returns:
+        --------
+        A dictionary with the names as keys and DataFrames containing the timestamps
+        as values.
         """
         
         # Output variable
         output_stamps = {}
-        
 
         # Individual columns or all columns
         if TTL == 'all':
             columns = self.logAI.columns[1:]
+        elif TTL.__class__ == str:
+            columns = [TTL]
+        elif TTL.__class__ == int:
+            columns = [f'TTL {TTL}']
         else:
-            if TTL.__class__ == str:
-                columns = [TTL]
+            if TTL[0].__class__ == int:
+                columns = [f'TTL {i}' for i in TTL]
             else:
                 columns = TTL    
             
@@ -442,7 +483,7 @@ class FIP_signal:
         if names.__class__ == str:
             names = [names]
             
-        # Error handeling
+        # Error handling
         if not len(columns)==len(names):
             raise Exception('Number of timestamp series and names are unequal.')
             
@@ -462,8 +503,13 @@ class FIP_signal:
             # Grab the starts and ends
             starts = timeline[dif==1]
             ends = timeline[dif==-1]
+
+            # Are there any stamps in here?
+            if (len(starts)==0) | (len(ends)==0):
+                print(f'No stamps on {columns[i]} ({names[i]})')
+                continue
             
-            # Error handeling
+            # Error handling
             if ends[0]<starts[0]:
                 ends = ends[1:]
             if starts[-1] > ends[-1]:
@@ -488,12 +534,15 @@ class FIP_signal:
             stamps['end'] = ends
             stamps['TTL'] = col
             stamps['name'] = name
-            self.timestamps.append(stamps)
-            print('Importing {0} stamps, named: {1}'.format(len(stamps['start']), stamps['name']))
+            if store_stamps:
+                self.timestamps.append(stamps)
+                print('Importing {0} stamps, named: {1}'.format(len(stamps['start']), stamps['name']))
+            else:
+                print(f"Derived {len(stamps['start'])} stamps with name {stamps['name']}.")
             
             # Can we calculate the stamp length?
             stamps['length'] = stamps['end'] - stamps['start']
-            selector = stamps['length']>min_length
+            selector = stamps['length']>=min_length
             selector[stamps['length']>max_length] = False
             
             # Apply selector
@@ -505,27 +554,79 @@ class FIP_signal:
             output_stamps[name] = pd.DataFrame(stamps)
             
         return output_stamps
+
+
+    def quick_peri(self, TTL='all', window = 10, from_ref = False,
+        stamps_min = 0, stamps_max = np.inf):
+        """
+        QUICK_PERI will make a quick peri-event plot around the pulses
+        captures in TTL. Here TLL can be an int or a string.
+
+        Example:
+
+            >>> PE = signal.quick_peri(1)
+
+        This will make the sweepset object around the TTL stamps on
+        TTL 1. It will them plot this dataset.
+
+        Parameters:
+        -----------
+        TTL: int or str
+            TTL you want to look at. E.g. "TTL 1" or just "1".
+        window: numeric
+            Time window both before and after the timestamps
+        from_ref: Bool
+            If you set this to True you'll look at the reference.
+        stamps_min: numeric
+            Minimum stamp duration to be included
+        stamps_max
+            Maximum stamp duration to be included
+
+        Returns:
+        --------
+        A sweepset object with your PE data or a list of these
+        objects if TTL refers to multiple channels.
+        """
     
-    
+        output = []
+        stamps = self.derive_timestamps(TTL, min_length=stamps_min, max_length=stamps_max,
+                store_stamps = False)
+        for key, value in stamps.items():
+            set = self.peri_event(value.start, window=window, from_ref = from_ref)
+
+            # Settings
+            set.settings['Z-score'] = True
+            set.settings['baseline subtract'] = True
+            set.settings['baseline'] = [-10, -2]
+            set.settings['display range'] = [-2, 5]
+            output.append(set)
+            set.make_figure()
+            plt.suptitle(key)
+
+        # Return
+        if len(output) == 1:
+            return output[0]
+        return output
+
+
     def peri_event(self, stamps, window = 10, from_ref = False):
         """
-        Will make a peri_event histrogram of all data surounding the stamps
-        The indexer is a bool that indexes all the actual data used
+        Will make a peri_event histogram of all data surrounding the stamps.
         
         If you set from_ref = True, it will plot the peri-event traces for
-        the refference channel instead, which is a good way to check if
+        the reference channel instead, which is a good way to check if
         your effect is due to light or movement artifacts.
         """
           
         # Make the timeline
         timeline = np.arange(-window, window, 1/self.framerate)
-        
+
         # Adapt the window
         window = int(window*self.framerate)
           
         # Output variable
         output = np.zeros([len(stamps), len(timeline), self.nr_signals])
-        
+
         # Original time variable
         original_time = np.zeros([len(stamps), len(timeline), self.nr_signals])
           
@@ -534,30 +635,33 @@ class FIP_signal:
             data = self.get_ref(detrend=True)
         else:
             data = self.get_data()
-        
-        # Is there enough data at the end of the stamp?
-        data_cutoff = np.max(stamps) + window
-        if data[1, -1, 0]<data_cutoff:
-            print('Deleting last stamp, because not enough data available.')
-            stamps = stamps[:-1]
-            output = output[:-1, :, :]
-        
+
+        # Make sure there is enough data before and after the last stamp
+        limit = (window+1)/self.framerate
+        indexer = (stamps>data[1, 0, 0]+limit) & (stamps<data[1, -1, 0]-limit)
+        if not sum(indexer) == len(stamps):
+            print(f'Removing the following timestamps because not enough data is available at the beginning or the end of the recording:')
+            print(stamps[~indexer])
+            stamps = stamps[indexer]
+            output = output[indexer, :, :]
+            original_time = original_time[indexer, :, :]
+
         # Go through all the stamps and grab the correct data
-        for stamp in range(0, len(stamps)):
+        for i, stamp in enumerate(stamps):
             for signal in range(0, self.nr_signals):
-                index = np.argmin(np.abs(data[1,:,signal]-stamps[stamp]))
-                output[stamp, :, signal] = \
-                    data[0, index-window:index+window, signal]
+                index = np.argmin(np.abs(data[1,:,signal]-stamp))
+                output[i, :, signal] = data[0, index-window:index+window, signal]
                 
-                # Store the original timepoints
-                original_time[stamp, :, signal] = \
-                    data[1, index-window:index+window, signal]
-                
-                # Select that same data in the indexer
-                #indexer[index-window:index+window, signal] = True
+                # Store the timeline
+                original_time[i, :, signal] = data[1, index-window:index+window, signal]
             
         # Make the sweepset object
-        new_sweepset = Sweepset(output, timeline, original_time)        
+        new_sweepset = Sweepset(output, timeline, original_time)
+        new_sweepset.facecolor = self.facecolor
+        new_sweepset.axcolor = self.axcolor
+
+        # Pass on the channel names
+        new_sweepset.labels = self.labels        
                       
         return new_sweepset
 
@@ -569,9 +673,8 @@ class FIP_signal:
         
         Note: that sync_time does a simple first-order linear fit so if the 
         discrepancies in timing between the dataset are more complicated, this
-        method is not usefull. Sync time will keep the framerate constant 
+        method is not useful. Sync time will keep the frame rate constant 
         throughout the session. 
-        
 
         Parameters
         ----------
@@ -602,12 +705,41 @@ class FIP_signal:
         
         # The LogAI trace
         self.logAI.loc[:, 'Time'] = self.logAI.Time*p[0] + p[1]
-        
+
+    def _default_formatting(self, ax):
+        """
+        Just some default formatting to make it look good.
+        """
+
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_facecolor(self.facecolor)
+        ax.spines['left'].set_color(self.axcolor)
+        ax.spines['bottom'].set_color(self.axcolor)
+        ax.xaxis.label.set_color(self.axcolor)
+        ax.yaxis.label.set_color(self.axcolor)
+        ax.tick_params(colors=self.axcolor)
+        ax.title.set_color(self.axcolor)    
                       
         
 class Sweepset:
     """
-    ....
+    The sweepset object contains peri-event data. Use the available methods to process and plot.
+
+    Important attributes:
+    - RAW_DATA: contains the RAW peri-event data as follows [trials, timeline, signals] however
+      it is recommended to use get_data to get the normalized and/or sliced data.
+    - SELECTOR: is a list of Bools that can be used to ignore trials. For instance if they contain
+      movement artifacts.
+    - SETTINGS: contains a dictionary with the settings used to process this peri-event data set.
+      for instance, this is where you set the baseline window as well as the Z-score normalization.
+
+    Important methods (see individual doc-strings for more details):
+    - GET_DATA: will give you normalized and/or processed data
+    - MAKE_FIGURE: will plot the available data
+    - GET_AVERAGE: will give you a 1-D average of a channel and a timeline.
+    - AUROC: will give you auROC-normalized traces for all channels. This is the preferred method
+      of normalizing FIP data if you have enough trials.
     """
     
     def __init__(self, raw_data, timeline, original_timeline):
@@ -616,6 +748,7 @@ class Sweepset:
         self.X = timeline
         self.selector = np.ones(raw_data.shape[0], dtype=bool)
         self.nr_signals = raw_data.shape[2]
+        self.labels = [f'channel {i+1}' for i in range(raw_data.shape[2])]
         self.original_timeline = original_timeline
         
         # Work on the default settings
@@ -624,6 +757,10 @@ class Sweepset:
                          "Z-score": False,\
                          "display range": [timeline[0], timeline[-1]],\
                          "min-max": False}
+
+        # Some formatting
+        self.facecolor = 'w'
+        self.axcolor = 'k'
         
     def get_data(self, sliced = False):
         # Grabs the data based on the raw_data and the settings
@@ -677,20 +814,22 @@ class Sweepset:
         Creates a figure with subplots displaying the data and average traces.
 
         Parameters:
-            cmap (matplotlib colormap, optional): The colormap to be used for the heatmap. 
-                If not provided, a default colormap is used.
-            xlim (tuple, optional): The x-axis limits for the data display range. 
-                If not provided, the entire range of the data is displayed.
+        -----------
+        cmap (matplotlib colormap, optional): The colormap to be used for the heatmap. 
+            If not provided, a default colormap is used.
+        xlim (tuple, optional): The x-axis limits for the data display range. 
+            If not provided, the entire range of the data is displayed.
 
         Returns:
-            Figure handle
+        --------
+        Figure handle
 
         Note:
-            - This function relies on the presence of the following attributes in the object:
-                - self.X: X-axis values for the data
-                - self.nr_signals: Number of signals in the data
-                - self.settings: Dictionary containing various settings, including 'display range' and 'Z-score'
-                - self.get_data(): Method that retrieves the data to be plotted
+        This function relies on the presence of the following attributes in the object:
+        - self.X: X-axis values for the data
+        - self.nr_signals: Number of signals in the data
+        - self.settings: Dictionary containing various settings, including 'display range' and 'Z-score'
+        - self.get_data(): Method that retrieves the data to be plotted
         """
         
         # Deal with the default cmap
@@ -714,7 +853,8 @@ class Sweepset:
         X = X[range_start:range_end]
         
         # Make a figure
-        figure, axs = plt.subplots(2, self.nr_signals, tight_layout=False)
+        figure, axs = plt.subplots(2, self.nr_signals, tight_layout=False, facecolor=self.facecolor)
+        _ = [self._default_formatting(ax) for ax in axs.flatten()]
         figure.set_size_inches([12, 5])
 
         # This is important to make this work when there is only one signal
@@ -727,15 +867,12 @@ class Sweepset:
             data_df = data[:,:,i]
             data_hm = pd.DataFrame(columns = X, data=data_df)
             
-            # NOTE: dataFrame for the heatmap so we can do the correct
-            # x-axis scaling in a future version.
-            
-            # If using the default
             # Heatmap showing each trial
-            sns.heatmap(data_hm, cbar_kws = {'orientation': 'horizontal'},
+            temp = sns.heatmap(data_hm, cbar_kws = {'orientation': 'horizontal'},
                         ax=axs[0, i], cmap=cmap, xticklabels=False, center=0)
             axs[0, i].set_ylabel('Trial #')   
-            axs[0, i].set_title('Channel {0}'.format(i+1))
+            axs[0, i].set_title(self.labels[i])
+            temp.collections[0].colorbar.ax.tick_params(axis='x', colors=self.axcolor)
             
             # Grab the data to plot the average
             # (Calculating this yourself is faster then seaborn lineplot)
@@ -761,7 +898,22 @@ class Sweepset:
 
         return figure          
                 
-    def get_average(self, channel, sliced = False):
+    def get_average(self, channel:int, sliced = False):
+        """
+        GET_AVERAGE takes the average over all trials of one channel.
+
+        Parameters:
+        -----------
+        channel: int
+            The channel index (note 0-indexing!) of the channel you are interested in.
+        sliced: Bool
+            If you set this to True, it will only give you indicated in the "display range" setting
+
+        Returns:
+        --------
+        A 2D matrix with a timeline in the first column and the mean signal in the 2nd.
+
+        """
         
         # Grab the data
         data = self.get_data()
@@ -874,7 +1026,6 @@ class Sweepset:
             new_data = new_data.astype(float)
     
         return new_data
-   
     
     def get_peaks(self, interval):
         
@@ -890,8 +1041,31 @@ class Sweepset:
         columns = [f'channel_{i}' for i in range(peaks.shape[1])]
         
         return pd.DataFrame(data=peaks, columns = columns)
-        
+
+    def _default_formatting(self, ax):
+        """
+        Just some default formatting to make it look good.
+        """
+
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_facecolor(self.facecolor)
+        ax.spines['left'].set_color(self.axcolor)
+        ax.spines['bottom'].set_color(self.axcolor)
+        ax.xaxis.label.set_color(self.axcolor)
+        ax.yaxis.label.set_color(self.axcolor)
+        ax.tick_params(colors=self.axcolor)
+        ax.title.set_color(self.axcolor)      
         
                 
-        
-        
+# This is to run FIP_signal from the command line.       
+if __name__ == '__main__':
+    import sys
+
+    if sys.argv[-1][-3:] == 'mat':
+        signal = FIP_signal(filename = sys.argv[-1])
+        signal.facecolor = 'k'
+        signal.axcolor = 'w'
+
+        plt.ion()
+        signal.plot()       
