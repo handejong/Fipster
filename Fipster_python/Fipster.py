@@ -20,6 +20,7 @@ from scipy.io import loadmat
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import colormaps
 import os
 import pandas as pd
 import seaborn as sns
@@ -45,14 +46,17 @@ class FIP_signal:
         self.filename = []
         self.notes = []
         self.logAI = []
-        self.timestamps = []
         self.detrend = False
         self.external_signal = []
         self.smooth = []
 
+        # A dictionary that will contain all the timestamps
+        self.timestamps = {}
+
         # This is just for formatting of the figure
         self.facecolor = 'w'
-        self.axcolor='k'
+        self.axcolor = 'k'
+        self.colormap = colormaps['tab20'](np.linspace(0, 1, 20))
         
         # Set the settings. (IMPORTANT)
         self.settings = {
@@ -378,7 +382,7 @@ class FIP_signal:
             this will plot timestamps in the bottom plot.
         """
         
-        # Error handeling on the input arguments
+        # Error handling on the input arguments
         if len(self.timestamps)==0:
             timestamps = False
         
@@ -419,10 +423,11 @@ class FIP_signal:
                          label = self.logAI.columns[i], lw=0.5)
             axs[-1].set_ylabel('AI (mV)')    
         else:
-            for i in range(0, len(self.timestamps)):
-                axs[-1].scatter(self.timestamps[i]['start'],\
-                            np.ones(self.timestamps[i]['start'].shape)*i,\
-                            label = self.timestamps[i]['name'])
+            offset = 0
+            for key, value in self.timestamps.items():
+                axs[-1].eventplot(value, lineoffsets=offset, label=key,
+                    colors=self.colormap[offset, :3])
+                offset += 1
             axs[-1].set_ylabel('Stamp #')    
         axs[-1].set_xlabel('Time (s)')
         axs[-1].legend(loc = 'upper right')
@@ -431,7 +436,7 @@ class FIP_signal:
         figure.suptitle(self.filename)
 
         return figure, axs
-    
+
     
     def derive_timestamps(self, TTL = 'all', names = 'default', min_length = 0,
                           max_length = 9999, threshold = 1, store_stamps:bool = True):
@@ -535,7 +540,8 @@ class FIP_signal:
             stamps['TTL'] = col
             stamps['name'] = name
             if store_stamps:
-                self.timestamps.append(stamps)
+                self.timestamps[name+'_onset'] = starts
+                self.timestamps[name+'_offset'] = ends
                 print('Importing {0} stamps, named: {1}'.format(len(stamps['start']), stamps['name']))
             else:
                 print(f"Derived {len(stamps['start'])} stamps with name {stamps['name']}.")
@@ -557,7 +563,7 @@ class FIP_signal:
 
 
     def quick_peri(self, TTL='all', window = 10, from_ref = False,
-        stamps_min = 0, stamps_max = np.inf):
+        stamps_min = 0, stamps_max = np.inf, offset = False):
         """
         QUICK_PERI will make a quick peri-event plot around the pulses
         captures in TTL. Here TLL can be an int or a string.
@@ -572,36 +578,50 @@ class FIP_signal:
         Parameters:
         -----------
         TTL: int or str
-            TTL you want to look at. E.g. "TTL 1" or just "1".
+            TTL you want to look at. E.g. "TTL 1", "trial_start" or just "1".
         window: numeric
             Time window both before and after the timestamps
-        from_ref: Bool
+        from_ref: bool
             If you set this to True you'll look at the reference.
         stamps_min: numeric
             Minimum stamp duration to be included
         stamps_max
             Maximum stamp duration to be included
+        offset: bool
+            Will use the offset of a TTL pulse instead of the onset to
+            derive timestamps.
 
         Returns:
         --------
         A sweepset object with your PE data or a list of these
         objects if TTL refers to multiple channels.
         """
-    
         output = []
-        stamps = self.derive_timestamps(TTL, min_length=stamps_min, max_length=stamps_max,
-                store_stamps = False)
-        for key, value in stamps.items():
-            set = self.peri_event(value.start, window=window, from_ref = from_ref)
+        if (TTL.__class__==int) | (TTL.__class__==str):
+            TTL = [TTL]
 
-            # Settings
-            set.settings['Z-score'] = True
-            set.settings['baseline subtract'] = True
-            set.settings['baseline'] = [-10, -2]
-            set.settings['display range'] = [-2, 5]
-            output.append(set)
-            set.make_figure()
-            plt.suptitle(key)
+        for ttl in TTL:
+            if ttl in self.timestamps.keys():
+                temp = self.timestamps[ttl]
+                stamps={ttl:{'start':temp}}
+            else:
+                # This is what we do if we have to derive new stamps
+                stamps = self.derive_timestamps(TTL, min_length=stamps_min, max_length=stamps_max,
+                        store_stamps = False)
+            for key, value in stamps.items():
+                if offset:
+                    set = self.peri_event(value['end'], window = window, from_ref = from_ref)
+                else:
+                    set = self.peri_event(value['start'], window = window, from_ref = from_ref)
+
+                # Settings
+                set.settings['Z-score'] = True
+                set.settings['baseline subtract'] = True
+                set.settings['baseline'] = [-10, -2]
+                set.settings['display range'] = [-2, 5]
+                output.append(set)
+                set.make_figure()
+                plt.suptitle(key, color=self.axcolor)
 
         # Return
         if len(output) == 1:
@@ -617,7 +637,11 @@ class FIP_signal:
         the reference channel instead, which is a good way to check if
         your effect is due to light or movement artifacts.
         """
-          
+        
+        # First process the stamps
+        if stamps.__class__ == str:
+            stamps = self.timestamps[stamps]
+
         # Make the timeline
         timeline = np.arange(-window, window, 1/self.framerate)
 
