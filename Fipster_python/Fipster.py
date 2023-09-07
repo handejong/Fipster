@@ -100,8 +100,11 @@ class FIP_signal:
                     self.framerate = int(value[()])
                 
                 if key == 'notes':
-                    string_value = [i[0] for i in data[value[0][0]][()]]
-                    self.notes = ''.join(map(lambda x: chr(x), string_value))
+                    try:
+                        string_value = [i[0] for i in data[value[0][0]][()]]
+                        self.notes = ''.join(map(lambda x: chr(x), string_value))
+                    except:
+                        self.notes = ''
                 
                 if key == 'signal':
                     self.signal = np.array(value[()])
