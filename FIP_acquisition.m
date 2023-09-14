@@ -9,11 +9,14 @@ classdef FIP_acquisition < handle
     %
     %   Currently supported DAQ:
     %       - National Instruments
+    %       - See the 'daq_setup' method for more info about how the daq is setup and how to add a new one
     %
     %   Currently supported cameras:
-    %       - Photometrics Prime (note: Matlab adapter in Bèta)
+    %       - Photometrics Prime
     %       - Macvideo facetime camera
     %       - FLIR cameras using Pointgrey adapter (only Flycapture)
+    %       - FLIR cameras using GigE adapter
+    %       - See "camera_setup" method for more info about camera adapters and how to add them.
     %
     %   FIP_acquisition is part of FIPster. FIPster is made by Johannes de
     %   Jong, j.w.dejong@berkeley.edu
@@ -100,7 +103,7 @@ classdef FIP_acquisition < handle
         end
         
         function calibrate(obj)
-            %calibraTE will calibrate hardware
+            %calibrate will calibrate hardware
             %   Presents snapshot that should be used to select fibers,
             %   then runs program to set LED's to same signal strength.
             
@@ -222,7 +225,7 @@ classdef FIP_acquisition < handle
                 obj.filename=[obj.filename '_copy'];
             end
             
-            
+
             % Acquisition variables
             n_frame = 0;
             data = zeros(obj.aq_settings.fibers, 1);
