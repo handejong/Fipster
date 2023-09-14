@@ -22,6 +22,8 @@ function varargout = calibrationgui(varargin)
 
 % Edit the above text to modify the response to help calibrationgui
 
+% NOTE: this file is from the original "fipGUI" in the Deisseroth lab written by Christina Kim.
+
 % Last Modified by GUIDE v2.5 09-Nov-2016 17:19:04
 
 % Begin initialization code - DO NOT EDIT

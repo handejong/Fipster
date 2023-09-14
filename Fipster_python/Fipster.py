@@ -221,7 +221,7 @@ class FIP_signal:
         
          
     def check_settings(self):
-        # Checks if all settings are vallid (to prevent errors).
+        # Checks if all settings are valid (to prevent errors).
         
         # Cycle through the keys and check them all
         for key, value in self.settings.items():
