@@ -24,7 +24,8 @@ dataset = '../raw_data/example_1.mat'
 # Load data
 signal = fip.FIP_signal(filename = dataset)
 
-# Export the raw data to CSV for analysis with 
+# Export raw_data data to .csv if you don't want to work with .mat files.
+# NOTE: If a 405nm (isobestic) signal is available, the fit and subtraction is performed by default.
 raw_data = signal.get_data()
 raw_data = pd.DataFrame(index = raw_data[1, :, 0],
     columns = ['Channel_1', 'Channel_2', 'Channel_3'],
@@ -33,11 +34,11 @@ raw_data.index.name='Time (s)'
 raw_data.to_csv('example_data.csv')
 print(f'Raw data exported to .csv file.')
 
-# Have a look at the signal
+# Have a look at the normalized signal
 signal.plot(raw_data=False)
 plt.show()
 
-# Convert the TTL signal (bottom pannel) to timestamps
+# Convert the TTL signal (bottom panel) to timestamps
 licks = signal.derive_timestamps('TTL 1',
     names=['Licks'])['Licks']
 cue_onset = signal.derive_timestamps('TTL 2', 

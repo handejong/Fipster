@@ -12,7 +12,7 @@ To get an overview of the available methods type:
 
 Created on Tue Nov 12 14:41:27 2019
 
-@author: handejong
+@author: Han de Jong (j.w.dejong@berkeley.edu)
 """
 
 # These are neccesary for file browsing
@@ -961,8 +961,7 @@ class Sweepset:
             
             # Slice it
             average = average[range_start:range_end, :]
-            
-        
+
         return average
     
     
@@ -1091,6 +1090,8 @@ if __name__ == '__main__':
 
     if sys.argv[-1][-3:] == 'mat':
         signal = FIP_signal(filename = sys.argv[-1])
+
+        # This is pure vanity
         signal.facecolor = 'k'
         signal.axcolor = 'w'
 

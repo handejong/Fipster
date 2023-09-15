@@ -1,10 +1,10 @@
 # Fipster
-Fipster is a set of Matlab scripts used for the acquisition of fiber photometry (FIP) data on camera-based systems. It consists of:
+Fipster is a set of MATLAB and Python scripts used for the acquisition and analysis of fiber photometry (FIP) data on camera-based systems. It consists of:
 
 1. A wiki detailing how to build your own multi-fiber multi-color system.
 2. MATLAB acquisition code (FIP_acquisition) that will run the system.
-3. A GUI-based analysis pipeline in MATLAB (Fipster_Matlab)
-4. Code base analysis code in Python (Fipster_Python)
+3. GUI-based analysis code in MATLAB (Fipster_Matlab)
+4. Advanced analysis code in Python (Fipster_Python)
 
 ## How to build your own FIP setup
 Camera-based FIP setups can be build relatively cheap using of-the-shelf parts. They are very flexible and can be used for multi-color and multi-fiber experiments as well as experiments that combine both FIP and optogenetics. To get started have a look at the [wiki](https://github.com/handejong/Fipster/wiki) and put your own setup together using the parts_list.xlsx file.
@@ -15,7 +15,7 @@ Camera-based FIP setups can be build relatively cheap using of-the-shelf parts. 
 
     >> signal = FIP_signal('User input');
 
-This will open a GUI where one can select a .mat file containing signal (Calcium depended, CD) and reference (405nm emission) traces. There are currently two supported formats. One is that exported by Fipgui (Deisseroth lab) the other is the .mat files exported by the FIP_aquisition class which is also part of this toolbox. If a LogAI file with the same name is found in the same folder, this file will be imported as well. Most likely it should be straightforward to process data obtained using the neurophotometrics as well.
+This will open a GUI where one can select a .mat file containing signal (Calcium depended, CD) and reference (405nm excitation) traces. There are currently two supported formats. One is that exported by Fipgui (Deisseroth lab) the other is the .mat files exported by the FIP_aquisition class which is also part of this toolbox. If a LogAI file with the same name is found in the same folder, this file will be imported as well. Most likely it should be straightforward to process data obtained using the neurophotometrics as well.
 
 [![Example GUI workflow](https://j.gifs.com/z6oYo2.gif)](https://youtu.be/1qFxPjTp09g)
 *Click on the example for an example GUI walk trough on YouTube.*
@@ -33,13 +33,14 @@ import Fipster as fip
 # To load the data
 signal = fip.FIP_signal('your/filename/here.mat')
 ```
+Have a look at FIP_example.py to get a rough idea of what is possible.
 
-You can also run Fipster_Python directly from the command line by typing. This will present the complete dataset in a figure and make the dataset available in your workspace as an object named "signal'.
+You can also run Fipster_Python directly from the command line. This will present the complete dataset in a figure and make the dataset available in your workspace as an object named "signal'.
 
     $ipython -i fipster.py ../raw_data/example_1.mat 
 (This will load the example data, change this to load you own data) I
 
-On Mac OS and Linux you can add Fipster_python to your .bashrc or .zshrc as an alias to conveniently load FIP data wheverever you are:
+On Mac OS and Linux you can add Fipster_python to your .bashrc or .zshrc as an alias to conveniently load FIP data from anywhere:
 
     alias fipster="ipython -i path/where/you/installed/Fipster_python/Fipster.py"
 
