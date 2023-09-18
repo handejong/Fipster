@@ -294,9 +294,9 @@ class FIP_signal:
     def get_ref(self, detrend=False):
         """
         Calculate the fitted reference signal
-        Normally you'd never want do detrend (e.g. remove bleaching) from the
-        refference trace, however it might be that you want to make peri-
-        event plots of the refference trace in which case you'll want to
+        Normally you'd never want do de-trend (e.g. remove bleaching) from the
+        reference trace, however it might be that you want to make peri-
+        event plots of the reference trace in which case you'll want to
         remove the bleaching trend using detrend=True (the peri-event method
         does this automatically).
         """
@@ -308,11 +308,12 @@ class FIP_signal:
         ref = self.raw_ref.copy()
         signal = self.signal
         
-        # Do we detrend?(Apply Savitzky-Golay filter)        
+        # Do we de-trend?(Apply Savitzky-Golay filter)        
         if detrend:
+            window = min((5000, ref.shape[1]))
             for i in range(0, self.nr_signals):
                 ref[0, :, i] = ref[0, :, i] - \
-                scipy_signal.savgol_filter(ref[0, :, i], 5001, 1) + \
+                scipy_signal.savgol_filter(ref[0, :, i], window, 1) + \
                 np.min(ref[0, :, i])
                
         # Go over the 4 methods
@@ -332,15 +333,7 @@ class FIP_signal:
         if self.settings['fit ref'] == 'rolling polyfit':
             ref = self.rolling_polyfit()
         
-        # Do we detrend?(Apply Savitzky-Golay filter)        
-        if detrend:
-            for i in range(0, self.nr_signals):
-                ref[0, :, i] = ref[0, :, i] - \
-                scipy_signal.savgol_filter(ref[0, :, i], 5001, 1) + \
-                np.min(ref[0, :, i])
-                
-        return ref
-        
+        return ref   
               
     def rolling_polyfit(self):
         """
@@ -639,6 +632,33 @@ class FIP_signal:
         If you set from_ref = True, it will plot the peri-event traces for
         the reference channel instead, which is a good way to check if
         your effect is due to light or movement artifacts.
+
+        Parameters:
+        -----------
+        stamps: str or list
+            - The timestamps that will be at T=0 in the peri-event histogram. If a string
+            will use the timestamps stored in the FIP_signal object by that name.
+        window: numerical
+            - The window before and after T=0 in seconds.
+        from_ref: bool
+            - To plot the reference signal instead, set to True
+
+        Returns:
+        --------
+        A sweepset object containing the PE data
+
+        Examples:
+        ---------
+
+        # Make this object, look at the onset of timestamps on 'TTL 1':
+        >>> PE = signal.peri_event(signal.timestamps['TTL 1_onset'], from_ref=False)
+
+        # Normalize the PE dataset
+        PE.settings['Z-score'] = True
+
+        # Plot the PE data
+        PE.make_figure()
+
         """
         
         # First process the stamps
@@ -790,7 +810,28 @@ class Sweepset:
         self.axcolor = 'k'
         
     def get_data(self, sliced = False):
-        # Grabs the data based on the raw_data and the settings
+        """
+        Returns the normalized and baseline-corrected data.
+
+        NOTE: to pick the baseline window and normalization method use the 'settings' property.
+
+        Parameters:
+        -----------
+        sliced: bool
+            - Instead of the returning the complete dataset, will return the part indicated in
+            settings['display range'']
+
+        Returns:
+        --------
+        The output data in a NumPy array like so: [n_trials, n_timepoints, n_channels]
+
+        Examples:
+        ---------
+
+            >>> data = get_data() # Get the dataset
+            >>> df_data = pd.DataFrame(data[:, :, 0].transpose(),
+                                        index = self.X) # Convert channel 1 to a DataFrame
+        """
         
         # Grab the raw data
         data = self.raw_data.copy()
@@ -1088,6 +1129,7 @@ class Sweepset:
 if __name__ == '__main__':
     import sys
 
+    # EXAMPLE here we use the 2nd argument provided to indicate the dataset.
     if sys.argv[-1][-3:] == 'mat':
         signal = FIP_signal(filename = sys.argv[-1])
 

@@ -33,12 +33,12 @@ import Fipster as fip
 # To load the data
 signal = fip.FIP_signal('your/filename/here.mat')
 ```
-Have a look at FIP_example.py to get a rough idea of what is possible.
+Have a look at <b>FIP_example.py</b> to get a rough idea of what is possible.
 
 You can also run Fipster_Python directly from the command line. This will present the complete dataset in a figure and make the dataset available in your workspace as an object named "signal'.
 
     $ipython -i fipster.py ../raw_data/example_1.mat 
-(This will load the example data, change this to load you own data) I
+(This will load the example data, change this to load you own data)
 
 On Mac OS and Linux you can add Fipster_python to your .bashrc or .zshrc as an alias to conveniently load FIP data from anywhere:
 
