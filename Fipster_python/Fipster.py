@@ -53,6 +53,9 @@ class FIP_signal:
         # A dictionary that will contain all the timestamps
         self.timestamps = {}
 
+        # This is where you can put a filter that would be applied
+        self.filter = None
+
         # This is just for formatting of the figure
         self.facecolor = 'w'
         self.axcolor = 'k'
@@ -194,7 +197,7 @@ class FIP_signal:
         # TODO
         #   .... does it have it's own timeline?
         #   .... is the sample rate equal to the internal signal
-        #   .... does it come with a refference?
+        #   .... does it come with a reference?
         if not len(new_signal) == self.signal.shape[1]:
             print("This function is not finished")
             return 0
@@ -260,10 +263,17 @@ class FIP_signal:
         # Calculate the normalized data based on the settings
         data = self.signal.copy()
         ref = self.get_ref()
+
+        # Do we filter?
+        if not self.filter is None:
+            print('Applying provided filter to signal.')
+            data[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], data[0, :, :], axis=0)
         
         # Subtract the fitted reference, add the mean value
         for i in range(0, self.nr_signals):
-            data[0, :, i] = data[0, :, i] - ref[0, :, i] + np.mean(ref[0, :, i])
+
+            if not self.settings['fit ref'] == 'no fit':
+                data[0, :, i] = data[0, :, i] - ref[0, :, i] + np.mean(ref[0, :, i])
             
             # should we detrend? (Apply Savitzky-Golay filter)
             if self.detrend:
@@ -306,7 +316,12 @@ class FIP_signal:
         
         # Grab raw data
         ref = self.raw_ref.copy()
-        signal = self.signal
+        signal = self.signal.copy()
+
+        # Do we filter?
+        if not self.filter is None:
+            ref[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], ref[0, :, :], axis=0)
+            signal[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], signal[0, :, :], axis=0)
         
         # Do we de-trend?(Apply Savitzky-Golay filter)        
         if detrend:
@@ -394,8 +409,18 @@ class FIP_signal:
         # Plot the signals
         if raw_data:
             ref = self.get_ref()
+
+            # Grab the signals
+            to_plot = self.signal.copy()
+
+            # Filter if requested
+            if not self.filter is None:
+                print('Applying provided filter to signal')
+                to_plot[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], to_plot[0, :, :], axis=0)
+
             for i, signal_i in enumerate(signals):
-                axs[i].plot(self.signal[1, :, signal_i], self.signal[0, :, signal_i], lw = 0.5,
+
+                axs[i].plot(to_plot[1, :, signal_i], to_plot[0, :, signal_i], lw = 0.5,
                     label = 'signal')
                 if not ref[0, :, signal_i].sum() == 0:
                     axs[i].plot(ref[1, :, signal_i], ref[0, :, signal_i], lw = 0.5, 
@@ -406,7 +431,7 @@ class FIP_signal:
         else:
             data = self.get_data()
             for i, signal_i in enumerate(signals):
-                axs[i].plot(data[1, :, signal_i], data[0, :, signal_i], lw = 0.5)
+                axs[i].plot(data[1, :, signal_i], data[0, :, signal_i], lw = 0.5, label=f'Channel_{i}')
                 axs[i].set_ylabel(f"{self.labels[signal_i]} ({self.settings['signal unit']})")
 
         # Some formatting
@@ -614,7 +639,7 @@ class FIP_signal:
                 set.settings['Z-score'] = True
                 set.settings['baseline subtract'] = True
                 set.settings['baseline'] = [-10, -2]
-                set.settings['display range'] = [-2, 5]
+                set.settings['display range'] = [-2, window]
                 output.append(set)
                 set.make_figure()
                 plt.suptitle(key, color=self.axcolor)
@@ -960,13 +985,9 @@ class Sweepset:
             ylim = axs[1, i].get_ylim()
             axs[1, i].vlines([0], ymin = ylim[0], ymax=ylim[1],
                              linestyle='--', color='grey')
-                
-        # Force plot
-        plt.show()
-
         return figure          
                 
-    def get_average(self, channel:int, sliced = False):
+    def get_average(self):
         """
         GET_AVERAGE takes the average over all trials of one channel.
 
@@ -985,23 +1006,23 @@ class Sweepset:
         
         # Grab the data
         data = self.get_data()
-        
-        # Grab the Timeline
-        X = np.expand_dims(np.round(self.X, decimals = 2), axis = 1)
-        
-        # Make the average (including it's timeline)
-        average = np.expand_dims(np.mean(data[:, :, channel], axis = 0), axis = 1)
-        average = np.concatenate((X, average), axis = 1)
+
+        # Output
+        average = pd.DataFrame(index = self.X, columns = self.labels)
+
+        for channel_i in range(self.nr_signals):
+            average.loc[:, self.labels[channel_i]] = np.mean(data[:, :, channel_i], axis = 0)
         
         # Figure out if we should slice
         # Should we slice the data?
-        if sliced:
-             # Find out the display range
-            range_start = np.argmin(np.abs(self.X - self.settings['display range'][0]))
-            range_end = np.argmin(np.abs(self.X - self.settings['display range'][1]))+1
+        # DO THIS
+        # if sliced:
+        #      # Find out the display range
+        #     range_start = np.argmin(np.abs(self.X - self.settings['display range'][0]))
+        #     range_end = np.argmin(np.abs(self.X - self.settings['display range'][1]))+1
             
-            # Slice it
-            average = average[range_start:range_end, :]
+        #     # Slice it
+        #     average = average[range_start:range_end, :]
 
         return average
     
@@ -1049,7 +1070,7 @@ class Sweepset:
     
         # For every channel        
         # Output data
-        column_names = [f'channel_{i+1}' for i in range(self.nr_signals)]
+        column_names = self.labels
         new_data  = pd.DataFrame(index = self.X, columns=column_names)
         
         # Grab all data
@@ -1086,7 +1107,7 @@ class Sweepset:
                 pSignal = [(temp>t).sum()/l for t in thresholds]
             		
                 # Calculate the auROC and store it
-                new_data.loc[time, f'channel_{channel_i+1}'] =\
+                new_data.loc[time, self.labels[channel_i]] =\
                     metrics.auc(pBaseline, pSignal)
             
             # Just making sure it's floats not objects or anything
