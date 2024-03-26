@@ -265,37 +265,36 @@ class FIP_signal:
         ref = self.get_ref()
 
         # Do we filter?
-        if not self.filter is None:
-            print('Applying provided filter to signal.')
-            data[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], data[0, :, :], axis=0)
-        
-        # Subtract the fitted reference, add the mean value
-        for i in range(0, self.nr_signals):
+        data = self._apply_filter(data)
 
+        # Is there a reference?
+        if not self.raw_ref.sum() == 0:
+
+            # Should we fit?
             if not self.settings['fit ref'] == 'no fit':
-                data[0, :, i] = data[0, :, i] - ref[0, :, i] + np.mean(ref[0, :, i])
-            
-            # should we detrend? (Apply Savitzky-Golay filter)
-            if self.detrend:
-                data[0, :, i] = data[0, :, i] - \
-                scipy_signal.savgol_filter(data[0, :, i], 5001, 1) + \
-                np.min(data[0, :, i])
                 
-            # Do we smooth the signal
+                # Calculate dF/F
+                for i in range(0, self.nr_signals):
+                    if not self.external_signal[i]: # we don't want to do this to external signals
+                        data[0, :, i] = (data[0, :, i] - ref[0, :, i])/ref[0, :, i]
+
+        else:
+            for i in range(0, self.nr_signals):
+                if not self.external_signal[i]:
+                    data[0, :, i] = (data[0, :, i] - np.median(data[0, :, i]))/np.median(data[0, :, i])
+     
+        # Should we detrend? (Apply Savitzky-Golay filter)
+        if self.detrend:
+            data[0, :, :] = (data[0, :, :] - scipy_signal.savgol_filter(data[0, :, :], 5001, 1, axis=0)) + np.min(data[0, :, :], axis=0)
+
+        # Should we smooth?
+        for i in range(0, self.nr_signals):
             if self.smooth[i]:
-                data[0, :, i] = scipy_signal.savgol_filter(data[0, :, i], 
-                                                     self.smooth[i], 1)
-                
-            # Do we want Z-scores?
-            if self.settings['signal unit'] == 'Z-score':
-                data[0, :, i] = (data[0, :, i] - np.mean(data[0, :, i]))/\
-                np.std(data[0, :, i])
-                
-            # Report delta/F over F
-            # We are assuming that we don't want to do this for external signals
-            if not self.external_signal[i]:
-                F = np.median(data[0, :, i])
-                data[0, :, i] = (data[0, :, i]-F)/F
+                data[0, :, i] = scipy_signal.savgol_filter(data[0, :, i], self.smooth[i], 1)
+
+        # Do we want Z-scores?
+        if self.settings['signal unit'] == 'Z-score':
+            data[0, :, :] = (data[0, :, :] - np.mean(data[0, :, :], axis=0))/np.std(data[0, :, :], axis=0)
             
         # Return the normalized data
         return data
@@ -318,11 +317,10 @@ class FIP_signal:
         ref = self.raw_ref.copy()
         signal = self.signal.copy()
 
-        # Do we filter?
-        if not self.filter is None:
-            ref[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], ref[0, :, :], axis=0)
-            signal[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], signal[0, :, :], axis=0)
-        
+        # Apply filter if requested
+        ref = self._apply_filter(ref)
+        signal = self._apply_filter(signal)
+
         # Do we de-trend?(Apply Savitzky-Golay filter)        
         if detrend:
             window = min((5000, ref.shape[1]))
@@ -352,13 +350,13 @@ class FIP_signal:
               
     def rolling_polyfit(self):
         """
-        This is just a 1st order polynomal fit, except we execute it on a
+        This is just a 1st order polynomial fit, except we execute it on a
         rolling interval. This is good for longer recordings or when there
-        is a shift in signal intensity between the signal and the refference
+        is a shift in signal intensity between the signal and the reference
         """
         
         ref = self.raw_ref.copy()
-        signal = self.signal
+        signal = self._apply_filter(self.signal)
 
         # Make the output
         output = ref.copy()
@@ -387,10 +385,17 @@ class FIP_signal:
             A list of all signals you want to plot.
         raw_data: Bool
             If True, this will plot raw non-normalized data. It will fit the
-            reference to the signal though. You set that separately in "settings".
+            reference to the signal (you set that separately in "settings".)
+            and if a filter is provided it will still apply it.
+            (it actually should be called "normalized" but continuity is key)
         timestamps: Bool
             You can plot either raw log_AI traces or timestamps. If set to True
             this will plot timestamps in the bottom plot.
+
+        Returns:
+        --------
+        A Matplotlib figure and axis object.
+        
         """
         
         # Error handling on the input arguments
@@ -413,11 +418,10 @@ class FIP_signal:
             # Grab the signals
             to_plot = self.signal.copy()
 
-            # Filter if requested
-            if not self.filter is None:
-                print('Applying provided filter to signal')
-                to_plot[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], to_plot[0, :, :], axis=0)
+            # Apply filter if requested
+            to_plot = self._apply_filter(to_plot)
 
+            # Do the plotting
             for i, signal_i in enumerate(signals):
 
                 axs[i].plot(to_plot[1, :, signal_i], to_plot[0, :, signal_i], lw = 0.5,
@@ -481,10 +485,10 @@ class FIP_signal:
 
         Returns:
         --------
-        A dictionary with the names as keys and DataFrames containing the timestamps
-        as values.
-        """
-        
+        - If you asked for one set of timestamps: a Pandas DataFrame with the timestamps.
+        - If you asked for multiple sets of timestamps: a dictory with multiple DataFrames.
+
+        """ 
         # Output variable
         output_stamps = {}
 
@@ -579,6 +583,10 @@ class FIP_signal:
 
             # Add these stamps to the output
             output_stamps[name] = pd.DataFrame(stamps)
+
+        # If only one set of stamps, return that
+        if len(output_stamps)==1:
+            return output_stamps[list(output_stamps.keys())[0]]
             
         return output_stamps
 
@@ -777,6 +785,116 @@ class FIP_signal:
         
         # The LogAI trace
         self.logAI.loc[:, 'Time'] = self.logAI.Time*p[0] + p[1]
+
+
+    def fix_signal_switch(self, index = None, min_shift_size = 10**3):
+        """
+        This function is there to address the specific case where the signal and reference traces
+        are somehow "switched". This occurs because the camera or the computer missed one frame
+        and consequently confuses the signal and the reference.
+
+        Parameters:
+        -----------
+        index: int
+            - The index (i) of where in the signal the switch occurs.
+            - If None, will find the index using the find_signal_switch method.
+
+        Returns:
+        --------
+        None
+        """
+
+        # Find the index
+        if index is None:
+            index, size = self.find_signal_switch()
+
+            if size[0]>min_shift_size:
+                print(f'Found signal switch at index {index} (size: {size})')
+            else:
+                print('No signal switch found')
+                return None
+            
+        # The recording starts with a reference frame, so if the index is the same for
+        # both channels, the missing frame is a reference frame.
+        if index[0] == index[1]:
+            i = index[0]
+            new_ref = self.raw_ref.copy()
+            new_ref[0 , i+1:, :] = self.signal[0, i:-1, :] # Move the ref
+            new_ref[0, i, :] = new_ref[0, i-1, :] # Insert the missed frame
+            self.signal[0, i:, :] = self.raw_ref[0, i:, :] # Move the signal
+            self.raw_ref = new_ref # Store the ref
+
+        # In this case the missing frame is a signal frame
+        elif index[0] == index[1] - 1:
+            i = index[1]
+            new_signal = self.signal.copy()
+            new_signal[0, i:, :] = self.raw_ref[0, i:, :] # Move the signal
+            new_signal[0, i-1, :] = new_signal[0, i-2, :] # Insert the missed frame
+            self.raw_ref[0, i:, :] = self.signal[0, i-1:-1, :] # Move the ref
+            self.signal = new_signal # Store the signal
+        else:
+            print('The signal switch index implies a more complicated switch, this function is not designed for that.')
+            return 1
+
+        # Print the change
+        time_T = self.raw_ref[1, index[1], 0]
+        print(f'Switched signal and reference at index {index} (time: {time_T})')
+
+
+    def find_signal_switch(self):
+        """
+        This function is there to address the specific case where the signal and reference traces
+        are somehow "switched". This occurs because the camera or the computer missed one frame
+        and consequently confuses the signal and the reference.
+
+        Returns:
+        - The index (i) of where in the signal the switch occurs for both channels.
+        - The size of the shift in z-score units.
+        """
+
+        # Grab the raw signal and reference traces
+        raw_signal = self.signal
+        raw_ref = self.raw_ref
+
+        # Find the moment there is a large shift
+        d_signal = (np.diff(raw_signal[0, :, :], axis=0, prepend = raw_signal[0, 0, :].reshape(-1, 2))**2)
+        d_ref = np.diff(raw_ref[0, :, :], axis=0, prepend = raw_ref[0, 0, :].reshape(-1, 2))**2
+
+        # Multiply all signals and normalize
+        if d_signal.shape[1]>1:
+            d_signal = np.cumprod(d_signal, axis=1)[:, -1]
+            d_ref = np.cumprod(d_ref, axis=1)[:, -1]
+
+        # Find the index for both channels
+        i = [np.argmax(d_signal), np.argmax(d_ref)]
+        size_signal = d_signal[i[0]]/np.std(d_signal[np.arange(len(d_signal)) != i[0]])
+        size_ref = d_ref[i[1]]/np.std(d_ref[np.arange(len(d_ref)) != i[0]])
+
+        return i, [size_signal, size_ref]
+
+
+    def _apply_filter(self, data):
+        """
+        Apply the provided filter to the signal. This method only applies a filter if one is
+        provided under self.filter.
+
+        Parameters:
+        -----------
+        data: NumPy array
+
+        Returns:
+        --------
+        The filtered data
+
+        """
+        if not self.filter is None:
+            print('Applying provided filter to signal')
+            min_value = data[0, :, :].min()
+            data[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], data[0, :, :], axis=0)
+            data[0, :, :] = data[0, :, :] + min_value
+
+        return data
+
 
     def _default_formatting(self, ax):
         """
