@@ -15,7 +15,7 @@ Created on Tue Nov 12 14:41:27 2019
 @author: Han de Jong (j.w.dejong@berkeley.edu)
 """
 
-# These are neccesary for file browsing
+# These are necessary for file browsing
 from scipy.io import loadmat
 import h5py
 import numpy as np
@@ -163,7 +163,7 @@ class FIP_signal:
 
         The logAI file contains analog input signals collected on the NI Daq during
         a recording. It is generally sampled at 200Hz (but this can vary). There are
-        some quircks in how Matlab stores timepoints at which logAI data is collected
+        some quirks in how Matlab stores timepoints at which logAI data is collected
         which is annoying and the reason we have to resample.
 
         """
@@ -191,12 +191,16 @@ class FIP_signal:
 
 
     def import_signal(self, new_signal):
+        """
+        Maybe there is some other signal you want to import into the FIP_signal object.
+        For instance, I use this to import the temporal derivative of a signal.
+        """
         # Import external signal
         
-        # Error handeling
+        # Error handling
         # TODO
         #   .... does it have it's own timeline?
-        #   .... is the sample rate equal to the internal signal
+        #   .... is the sample rate equal to the internal signal?
         #   .... does it come with a reference?
         if not len(new_signal) == self.signal.shape[1]:
             print("This function is not finished")
@@ -224,7 +228,9 @@ class FIP_signal:
         
          
     def check_settings(self):
-        # Checks if all settings are valid (to prevent errors).
+        """ 
+        Checks if all settings are valid (to prevent errors).
+        """
         
         # Cycle through the keys and check them all
         for key, value in self.settings.items():
@@ -255,8 +261,9 @@ class FIP_signal:
   
     
     def get_data(self):
-        # Calculate the data based on the signal, the ref and the settings
-        
+        """
+        Calculate the data based on the signal, the ref and the settings
+        """       
         # Check settings
         self.check_settings()
         
@@ -307,7 +314,9 @@ class FIP_signal:
         reference trace, however it might be that you want to make peri-
         event plots of the reference trace in which case you'll want to
         remove the bleaching trend using detrend=True (the peri-event method
-        does this automatically).
+        does this automatically). You could also just include a high-pass filter with
+        a low cutoff frequency to remove the bleaching trend. (See the example in the
+        included Jupyter notebook).
         """
         
         # Check settings
@@ -352,7 +361,11 @@ class FIP_signal:
         """
         This is just a 1st order polynomial fit, except we execute it on a
         rolling interval. This is good for longer recordings or when there
-        is a shift in signal intensity between the signal and the reference
+        is a shift in signal intensity between the signal and the reference.
+
+        I've actually never used it, but it works well as a sanity check.
+        Sometimes when you think there might be a tiny bit of signal, using
+        this method can show you that there isn't.
         """
         
         ref = self.raw_ref.copy()
@@ -486,7 +499,7 @@ class FIP_signal:
         Returns:
         --------
         - If you asked for one set of timestamps: a Pandas DataFrame with the timestamps.
-        - If you asked for multiple sets of timestamps: a dictory with multiple DataFrames.
+        - If you asked for multiple sets of timestamps: a dictionary with multiple DataFrames.
 
         """ 
         # Output variable
@@ -568,8 +581,8 @@ class FIP_signal:
                 self.timestamps[name+'_onset'] = starts
                 self.timestamps[name+'_offset'] = ends
                 print('Importing {0} stamps, named: {1}'.format(len(stamps['start']), stamps['name']))
-            else:
-                print(f"Derived {len(stamps['start'])} stamps with name {stamps['name']}.")
+            # else:
+            #     print(f"Derived {len(stamps['start'])} stamps with name {stamps['name']}.")
             
             # Can we calculate the stamp length?
             stamps['length'] = stamps['end'] - stamps['start']
@@ -716,24 +729,30 @@ class FIP_signal:
         else:
             data = self.get_data()
 
-        # Make sure there is enough data before and after the last stamp
+        # Make sure there is enough data before and after the last stamp otherwise
+        # just put np.nan values for that stamp. (We'll pass that info on to the 
+        # sweepset object).
         limit = (window+1)/self.framerate
         indexer = (stamps>data[1, 0, 0]+limit) & (stamps<data[1, -1, 0]-limit)
         if not sum(indexer) == len(stamps):
             print(f'Removing the following timestamps because not enough data is available at the beginning or the end of the recording:')
             print(stamps[~indexer])
-            stamps = stamps[indexer]
-            output = output[indexer, :, :]
-            original_time = original_time[indexer, :, :]
+            #stamps = stamps[indexer]
+            #output = output[indexer, :, :]
+            #original_time = original_time[indexer, :, :]
 
         # Go through all the stamps and grab the correct data
         for i, stamp in enumerate(stamps):
             for signal in range(0, self.nr_signals):
-                index = np.argmin(np.abs(data[1,:,signal]-stamp))
-                output[i, :, signal] = data[0, index-window:index+window, signal]
-                
-                # Store the timeline
-                original_time[i, :, signal] = data[1, index-window:index+window, signal]
+
+                # Is there enough data available? Else put nan
+                if not indexer[i]:
+                    output[i, :, signal] = np.nan
+                    original_time[i, :, signal] = np.nan
+                else:
+                    index = np.argmin(np.abs(data[1,:,signal]-stamp))
+                    output[i, :, signal] = data[0, index-window:index+window, signal]
+                    original_time[i, :, signal] = data[1, index-window:index+window, signal]
             
         # Make the sweepset object
         new_sweepset = Sweepset(output, timeline, original_time)
@@ -741,7 +760,10 @@ class FIP_signal:
         new_sweepset.axcolor = self.axcolor
 
         # Pass on the channel names
-        new_sweepset.labels = self.labels        
+        new_sweepset.labels = self.labels
+
+        # Store if there are missing trials
+        new_sweepset.missing_trials = ~indexer        
                       
         return new_sweepset
 
@@ -888,7 +910,7 @@ class FIP_signal:
 
         """
         if not self.filter is None:
-            print('Applying provided filter to signal')
+            # print('Applying provided filter to signal')
             min_value = data[0, :, :].min()
             data[0, :, :] = scipy_signal.filtfilt(self.filter[0], self.filter[1], data[0, :, :], axis=0)
             data[0, :, :] = data[0, :, :] + min_value
@@ -940,6 +962,7 @@ class Sweepset:
         self.nr_signals = raw_data.shape[2]
         self.labels = [f'channel {i+1}' for i in range(raw_data.shape[2])]
         self.original_timeline = original_timeline
+        self.missing_trials = np.zeros(raw_data.shape[0], dtype=bool)
         
         # Work on the default settings
         self.settings = {"baseline" : [-5, 0],\
@@ -951,6 +974,22 @@ class Sweepset:
         # Some formatting
         self.facecolor = 'w'
         self.axcolor = 'k'
+
+    def check_for_missing_trials(self, automatically_exclude = True):
+        """
+        Check if there are missing trials in the dataset.
+        """
+        temp = self.selector
+        self.selector = np.ones(self.raw_data.shape[0], dtype=bool)
+        missing_trials = np.isnan(self.get_data()).sum(axis=1).sum(axis=1)==self.get_data().shape[1]*2
+        if sum(missing_trials)>0:
+            print(f'Found {sum(missing_trials)} missing trials')
+        self.missing_trials = missing_trials
+        self.selector = temp
+
+        # Automatically exclude missing trials
+        if automatically_exclude:
+            self.selector[missing_trials] = False
         
     def get_data(self, sliced = False):
         """
@@ -1043,6 +1082,11 @@ class Sweepset:
         - self.get_data(): Method that retrieves the data to be plotted
         """
         
+        # Check if there are missing trials and if so: print a warning
+        if self.missing_trials[self.selector].sum()>0:
+            warnings.warn('\nWarning: you are trying to plot empty trials (most likely trials for which there was no data available).')
+            print('You might prefer to run sweepset.check_for_missing_trials() to exclude these.')
+
         # Deal with the default cmap
         if cmap is None:
             cmap = sns.diverging_palette(220, 20, sep=20, as_cmap=True)
@@ -1103,6 +1147,7 @@ class Sweepset:
             ylim = axs[1, i].get_ylim()
             axs[1, i].vlines([0], ymin = ylim[0], ymax=ylim[1],
                              linestyle='--', color='grey')
+            axs[1, i].set_xlim([X[0], X[-1]])
         return figure          
                 
     def get_average(self):
@@ -1114,7 +1159,7 @@ class Sweepset:
         channel: int
             The channel index (note 0-indexing!) of the channel you are interested in.
         sliced: Bool
-            If you set this to True, it will only give you indicated in the "display range" setting
+            If you set this to True, it will only give you data in the "display range" setting
 
         Returns:
         --------
@@ -1181,9 +1226,7 @@ class Sweepset:
     	as index. All timepoints with T<0 will be defined as baseline unless a
     	specific baseline is given.
         
-    	See Cohen et al. Nature, 2012 for a detailed explanation of this method.
-        
-            
+    	See Cohen et al. Nature, 2012 for a detailed explanation of this method.  
     	"""
     
         # For every channel        
@@ -1252,7 +1295,6 @@ class Sweepset:
         """
         Just some default formatting to make it look good.
         """
-
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         ax.set_facecolor(self.facecolor)
