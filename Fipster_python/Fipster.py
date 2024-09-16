@@ -710,6 +710,8 @@ class FIP_signal:
         # First process the stamps
         if stamps.__class__ == str:
             stamps = self.timestamps[stamps]
+        if stamps.__class__ == pd.Series:
+            stamps = stamps.values
 
         # Make the timeline
         timeline = np.arange(-window, window, 1/self.framerate)
@@ -735,8 +737,10 @@ class FIP_signal:
         limit = (window+1)/self.framerate
         indexer = (stamps>data[1, 0, 0]+limit) & (stamps<data[1, -1, 0]-limit)
         if not sum(indexer) == len(stamps):
-            print(f'Removing the following timestamps because not enough data is available at the beginning or the end of the recording:')
+            print(f'NOTE: not enough data is available at the beginning or the end of the recording. Adding nan values for these stamps:')
             print(stamps[~indexer])
+
+            # We removed this and instead we'll include np.nan values (see below)
             #stamps = stamps[indexer]
             #output = output[indexer, :, :]
             #original_time = original_time[indexer, :, :]
