@@ -1,24 +1,73 @@
 # Fipster Python
-Fipster Python is actively maintained and updated. There is no GUI, but you can use matplotlib controls (both task bar as well as code) to control figure behavior. Fipster_python is completely Matplotlib and Pandas based and can be conveniently incorporated into an analysis pipeline, for instance into a Jupyter Notebook. The basic structure of the code is as follows. There are two main classes, "FIP_signal" and "Sweepset". This is how they work:
+Fipster Python is actively maintained and updated. There is no GUI, but you can use matplotlib controls (both task bar as well as code) to control figure behavior. `Fipster_python` is completely Matplotlib and Pandas based and can be conveniently incorporated into an analysis pipeline, for instance into a Jupyter Notebook.
+
+## Installation
+Install Fipster into the Python environment you want to use:
+
+```bash
+python -m pip install -e /path/to/Fipster/Fipster_python
+```
+
+If you are already in the `Fipster_python` directory, you can instead run:
+
+```bash
+python -m pip install -e .
+```
+
+The `-e` flag performs an editable install, which is convenient during development because changes to the package are picked up without reinstalling it.
+
+After installation:
+
+- Import the package anywhere with `import fipster`
+- Legacy code can still use `import Fipster as fip`
+- Launch the command-line viewer with `fipster path/to/recording.mat`
+
+The basic structure of the code is as follows. There are two main classes, `FIP_signal` and `Sweepset`.
 
 ## FIP_signal
-Contains the main dataset. To get started from a Python script or Jupyter Notebook import the Fipster code and load a dataset like so:
+Contains the main dataset. From a Python script or Jupyter Notebook, import the package and load a dataset like so:
 
 ```python
-import sys
-sys.path.append('path/where/you/installed/Fipster_python/')
+import fipster
+
+# To load the data
+signal = fipster.FIP_signal(filename="your/filename/here.mat")
+```
+
+For backwards compatibility, the legacy import continues to work:
+
+```python
 import Fipster as fip
 
 # To load the data
-signal = fip.FIP_signal('your/filename/here.mat')
+signal = fip.FIP_signal(filename='your/filename/here.mat')
 ```
 
-You can also run Fipster_Python directly from the command line. This will present the complete dataset in a figure and make the dataset available in your workspace as an object named "signal'.
+You can also run Fipster Python directly from the command line. This will present the complete dataset in a figure and make the dataset available in your workspace as an object named `signal`.
 
-    $ipython -i fipster.py ../raw_data/example_1.mat 
+```bash
+fipster ../raw_data/example_1.mat
+```
+
 (This will load the example data, change this to load you own data)
 
-If you run FIPSTER from the command line, have a look at the end of code under __name__ == '__main__' and include your own 'main' function with formatting and/or normalization rules.
+If you run Fipster from the command line, have a look at the end of the code under `__name__ == '__main__'` and include your own `main` function with formatting and/or normalization rules.
+
+## Development
+The package now uses a standard `src/` layout:
+
+```text
+Fipster_python/
+  pyproject.toml
+  Fipster.py
+  src/fipster/
+  tests/
+```
+
+- `src/fipster/core.py` contains the main implementation
+- `src/fipster/cli.py` contains the console entry point
+- `Fipster.py` is a thin compatibility shim for older codebases
+- `tests/` contains pytest-based regression tests
 
 ### Overview of the available methods and important properties
 Note: the examples below suppose you loaded your dataset in an object named "signal" as demonstrated above. To get a complete overview of all methods and their docstrings type "dir(signal)". To read the docstring of a particular method use the 'help' function like so:

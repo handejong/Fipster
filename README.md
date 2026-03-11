@@ -23,26 +23,37 @@ This will open a GUI where one can select a .mat file containing signal (Calcium
 The MATLAB GUI is a very convenient way to quickly inspect your signals. We generally use it to look at signals right after we record them since we have MATLAB running on the acquisition computer anyway. While you can also incorporate the MATLAB code in your analysis pipeline (see "automated_workflow" for an example) we have generally moved to Python for the analysis of our experiments. While we continue to address bug fixes in the MATLAB code, we don't include new methods as we do in the Python code and therefore we've labeled it "legacy" code.
 
 ## Fipster Python
-Fipster Python is actively maintained and updated. There is no GUI, but you can use matplotlib controls (both task bar as well as code) to control figure behavior. Fipster_python is completely Matplotlib and Pandas based and can be conveniently incorporated into an analysis pipeline, for instance into a Jupyter Notebook. You can import Fipster_python into your code like so:
+Fipster Python is actively maintained and updated. There is no GUI, but you can use matplotlib controls (both task bar as well as code) to control figure behavior. Fipster_python is completely Matplotlib and Pandas based and can be conveniently incorporated into an analysis pipeline, for instance into a Jupyter Notebook.
+
+Install it into your current environment:
+
+```bash
+python -m pip install -e ./Fipster_python
+```
+
+Then import it into your code like so:
 
 ```python
-import sys
-sys.path.append('path/where/you/installed/Fipster_python/')
+import fipster
+
+# To load the data
+signal = fipster.FIP_signal(filename='your/filename/here.mat')
+```
+
+Legacy code can still use:
+
+```python
 import Fipster as fip
 
 # To load the data
-signal = fip.FIP_signal('your/filename/here.mat')
+signal = fip.FIP_signal(filename='your/filename/here.mat')
 ```
 Have a look at <b>FIP_example.py</b> to get a rough idea of what is possible.
 
 You can also run Fipster_Python directly from the command line. This will present the complete dataset in a figure and make the dataset available in your workspace as an object named "signal'.
 
-    $ipython -i fipster.py ../raw_data/example_1.mat 
+    $fipster ../raw_data/example_1.mat
 (This will load the example data, change this to load you own data)
-
-On Mac OS and Linux you can add Fipster_python to your .bashrc or .zshrc as an alias to conveniently load FIP data from anywhere:
-
-    alias fipster="ipython -i path/where/you/installed/Fipster_python/Fipster.py"
 
 There will be a detailed tutorial soon. But for now you should be able to get detailed instruction on the included method using the "help" method or by reading the docstrings of the code. For instance:
 

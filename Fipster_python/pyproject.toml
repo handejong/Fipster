@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fipster"
+dynamic = ["version"]
+description = "Fiber photometry analysis tools used by Fipster."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  { name = "Han de Jong" }
+]
+license = { text = "MIT" }
+keywords = ["fiber photometry", "neuroscience", "analysis"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+  "h5py",
+  "matplotlib",
+  "numpy",
+  "pandas",
+  "scikit-learn",
+  "scipy",
+  "seaborn",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build",
+  "pytest",
+  "twine",
+]
+
+[project.urls]
+Homepage = "https://github.com/handejong/Fipster"
+Repository = "https://github.com/handejong/Fipster"
+Issues = "https://github.com/handejong/Fipster/issues"
+
+[project.scripts]
+fipster = "fipster.cli:main"
+
+[tool.setuptools]
+py-modules = ["Fipster"]
+
+[tool.setuptools.dynamic]
+version = { attr = "fipster._version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
