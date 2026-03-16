@@ -3,8 +3,8 @@ Fipster is a set of MATLAB and Python scripts used for the acquisition and analy
 
 1. A wiki detailing how to build your own multi-fiber multi-color system.
 2. MATLAB acquisition code (FIP_acquisition) that will run the system.
-3. GUI-based analysis code in MATLAB (Fipster_Matlab)
-4. Advanced analysis code in Python (Fipster_Python)
+3. GUI-based analysis code in MATLAB ([Fipster_Matlab](https://github.com/handejong/Fipster/tree/master/Fipster_Matlab%20(legacy)))
+4. Advanced analysis code in Python ([Fipster_Python](https://github.com/handejong/Fipster/tree/master/Fipster_python))
 
 ## How to build your own FIP setup
 Camera-based FIP setups can be build relatively cheap using of-the-shelf parts. They are very flexible and can be used for multi-color and multi-fiber experiments as well as experiments that combine both FIP and optogenetics. To get started have a look at the [wiki](https://github.com/handejong/Fipster/wiki) and put your own setup together using the parts_list.xlsx file.
