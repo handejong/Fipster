@@ -1,7 +1,7 @@
 # Fipster
 Fipster is a set of MATLAB and Python scripts used for the acquisition and analysis of fiber photometry (FIP) data on camera-based systems. It consists of:
 
-1. A wiki detailing how to build your own multi-fiber multi-color system.
+1. A [wiki](https://github.com/handejong/Fipster/wiki) detailing how to build your own multi-fiber multi-color system.
 2. MATLAB acquisition code (FIP_acquisition) that will run the system.
 3. GUI-based analysis code in MATLAB ([Fipster_Matlab](https://github.com/handejong/Fipster/tree/master/Fipster_Matlab%20(legacy)))
 4. Advanced analysis code in Python ([Fipster_Python](https://github.com/handejong/Fipster/tree/master/Fipster_python))
