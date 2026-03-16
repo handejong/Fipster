@@ -107,7 +107,7 @@ help(signal.derive_timestamps) # Will print docstring of the "derive_timestamps"
 ### What FIP_signal.plot() looks like:
 This is with facecolor = 'k' and axcolor='w'
 
-<img src="https://raw.githubusercontent.com/handejong/Fipster/main/Images/fipster_python_example.jpeg" alt="Example of FIP_signal.plot" width="800px" />
+<img src="https://raw.githubusercontent.com/handejong/Fipster/master/Images/fipster_python_example.jpeg" alt="Example of FIP_signal.plot" width="800px" />
 
 ## Sweepset
 This is the standard peri-event dataset class. It is usually created by using the 'peri_event' or 'quick_peri' methods of the FIP_signal class. Again: use 'dir' and 'help' to read docstrings of the included methods.
@@ -130,7 +130,7 @@ These examples suppose you named our sweepset object PE:
 
 ### What sweepset.make_figure() looks like:
 
-<img src="https://raw.githubusercontent.com/handejong/Fipster/main/Images/sweepset_example.jpeg" alt="Example of sweepset.make_figure" width="800px" />
+<img src="https://raw.githubusercontent.com/handejong/Fipster/master/Images/sweepset_example.jpeg" alt="Example of sweepset.make_figure" width="800px" />
 
 ## Example code
 Have a look at <b>FIP_example.py</b> for an overview of what an analysis could look like. 
