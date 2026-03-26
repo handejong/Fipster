@@ -46,6 +46,7 @@ Issues = "https://github.com/handejong/Fipster/issues"
 
 [project.scripts]
 fipster = "fipster.cli:main"
+fipster-shell = "fipster.cli:shell_main"
 
 [tool.setuptools]
 py-modules = ["Fipster"]

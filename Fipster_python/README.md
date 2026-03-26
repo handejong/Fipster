@@ -21,6 +21,7 @@ After installation:
 - Import the package anywhere with `import fipster`
 - Legacy code can still use `import Fipster as fip`
 - Launch the command-line viewer with `fipster path/to/recording.mat`
+- Launch the interactive shell with `fipster-shell path/to/recording.mat`
 
 The basic structure of the code is as follows. There are two main classes, `FIP_signal` and `Sweepset`.
 
@@ -50,6 +51,12 @@ fipster ../raw_data/example_1.mat
 ```
 
 (This will load the example data, change this to load you own data)
+
+For an interactive shell with the loaded dataset available as `signal`, use:
+
+```bash
+fipster-shell ../raw_data/example_1.mat
+```
 
 If you run Fipster from the command line, have a look at the end of the code under `__name__ == '__main__'` and include your own `main` function with formatting and/or normalization rules.
 

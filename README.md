@@ -55,6 +55,10 @@ You can also run Fipster_Python directly from the command line. This will presen
     $fipster ../raw_data/example_1.mat
 (This will load the example data, change this to load you own data)
 
+For an interactive shell with the loaded dataset available as `signal`, use:
+
+    $fipster-shell ../raw_data/example_1.mat
+
 There will be a detailed tutorial soon. But for now you should be able to get detailed instruction on the included method using the "help" method or by reading the docstrings of the code. For instance:
 
 ```python

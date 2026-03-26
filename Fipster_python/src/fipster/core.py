@@ -80,15 +80,137 @@ class FIP_signal:
                 
         # Do we have an idea about what to import? -> Load that data
         if self.filepath != []:
-            self.load_data(self.filepath)
+
+            # Is it a .mat file?
+            if self.filepath.endswith('.mat'):
+                self.load_data_matlab(self.filepath)
+
+            # Is is a .csv file?
+            if self.filepath.endswith('.csv'):
+                self.load_data_csv(self.filepath)
                     
         # Is data imported? If not, open a file browser
         if not self.hasdata:
             print('No data loaded, created empty FIP_signal object.')
             #TODO include filebrowser
-            
-                    
-    def load_data(self, filename):
+
+    def load_data_csv(self, filename):
+        """
+        Load a CSV file into the FIP_signal object. Currently supports RWD-formatted files.
+
+        RWD format: row 1 is a JSON metadata string, row 2 is headers with 'TimeStamp',
+        'Events', and channel columns 'CHX-Y' (Y=wavelength).
+        """
+        # Peek at the second row to check for RWD headers
+        with open(filename) as f:
+            f.readline()  # skip metadata row
+            header_line = f.readline()
+
+        if 'TimeStamp' in header_line and 'Events' in header_line:
+            self.load_data_rwd(filename)
+        else:
+            print(f'Warning: CSV format not recognized. Only RWD format is currently supported.')
+
+
+    def load_data_rwd(self, filename):
+        """
+        Load RWD-formatted FIP data from a CSV file.
+
+        Row 1 contains JSON metadata (stored as self.metadata).
+        Data rows have columns: TimeStamp (ms), Events, CHX-Y (X=channel, Y=wavelength).
+        Columns with Y==410 are treated as reference; all others as signals.
+        """
+        print(f'Loading: {filename}')
+
+        # Store raw metadata string from row 1
+        with open(filename) as f:
+            self.metadata = f.readline().strip()
+
+        # Load data (skip metadata row)
+        df = pd.read_csv(filename, skiprows=1, dtype={'Events': str})
+        df = df.loc[:, ~df.columns.str.startswith('Unnamed')]
+
+        # Time in seconds
+        time = df['TimeStamp'].values / 1000.0
+
+        # Framerate from timestamp spacing
+        self.framerate = 1.0 / np.median(np.diff(time))
+
+        # Identify signal and ref columns
+        channel_cols = [c for c in df.columns if c.startswith('CH') and '-' in c]
+        ref_cols = [c for c in channel_cols if c.endswith('-410')]
+        sig_cols = [c for c in channel_cols if not c.endswith('-410')]
+
+        self.labels = sig_cols.copy()
+
+        n_samples = len(time)
+        n_signals = len(sig_cols)
+
+        self.signal = np.zeros((2, n_samples, n_signals))
+        self.raw_ref = np.zeros((2, n_samples, n_signals))
+
+        for i, sig_col in enumerate(sig_cols):
+            self.signal[0, :, i] = df[sig_col].values
+            self.signal[1, :, i] = time
+
+            ch_name = sig_col.split('-')[0]  # e.g. 'CH1'
+            ref_col = f'{ch_name}-410'
+            if ref_col in df.columns:
+                self.raw_ref[0, :, i] = df[ref_col].values
+            self.raw_ref[1, :, i] = time
+
+        # If no ref data at all, disable ref fitting
+        if not ref_cols:
+            self.settings['fit ref'] = 'no fit'
+
+        # Load events from the Events column
+        self.load_rwd_events(df, time)
+
+        # Finish up
+        self.nr_signals = n_signals
+        self.hasdata = True
+        self.filename = filename
+        self.external_signal = [False] * n_signals
+        self.smooth = [False] * n_signals
+
+        print(f'Loaded {n_signals} signals at {self.framerate:.1f} Hz from {filename}')
+
+
+    def load_rwd_events(self, df, time):
+        """
+        Parse the Events column of an RWD CSV file and populate self.timestamps.
+
+        Event strings have the form 'name*id*0' (onset) or 'name*id*1' (offset),
+        where the last field indicates onset (0) or offset (1).
+        """
+        onsets = {}
+        offsets = {}
+
+        events = df['Events']
+        for idx, event_str in events.items():
+            if not isinstance(event_str, str) or event_str.strip() == '':
+                continue
+
+            parts = event_str.strip().split('*')
+            indicator = parts[-1]
+            event_name = '*'.join(parts[:-1])  # e.g. 'trial*2'
+
+            if event_name not in onsets:
+                onsets[event_name] = []
+                offsets[event_name] = []
+
+            if indicator == '0':
+                onsets[event_name].append(time[idx])
+            elif indicator == '1':
+                offsets[event_name].append(time[idx])
+
+        for event_name in onsets:
+            self.timestamps[event_name + '_onset'] = np.array(onsets[event_name])
+            self.timestamps[event_name + '_offset'] = np.array(offsets[event_name])
+            print(f'Importing {len(onsets[event_name])} stamps, named: {event_name}')
+
+    
+    def load_data_matlab(self, filename):
         # Load .mat file into the object
         
         print('Loading: {0}'.format(filename))
@@ -732,11 +854,11 @@ class FIP_signal:
         if stamps.__class__ == pd.Series:
             stamps = stamps.values
 
-        # Make the timeline
-        timeline = np.arange(-window, window, 1/self.framerate)
-
         # Adapt the window
         window = int(window*self.framerate)
+
+        # Make the timeline (built from integer window to guarantee len == 2*window)
+        timeline = np.arange(-window, window) / self.framerate
           
         # Output variable
         output = np.zeros([len(stamps), len(timeline), self.nr_signals])
